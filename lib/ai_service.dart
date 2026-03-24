@@ -22,9 +22,9 @@ class AIService {
           'messages': [
             {
               'role': 'system',
-              'content': 'You are a medical assistant for a patient who cannot speak. '
-                  'Generate 3 very short, natural, and simple answer options (max 5 words each) '
-                  'that a patient would use to respond to the doctor question. '
+              'content': 'You are assisting a paralyzed patient in a hospital. '
+                  'Generate 3 short, clear, medically relevant answer options to a doctor\'s question. '
+                  'Avoid single-word or irrelevant answers like "Hi" or "Here". '
                   'The response MUST be in ${language.name}. '
                   'Return ONLY a JSON array of strings: ["option1", "option2", "option3"].'
             },

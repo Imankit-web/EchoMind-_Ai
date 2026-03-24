@@ -634,6 +634,9 @@ class _ResponseSelectionScreenState extends State<ResponseSelectionScreen> {
   bool _isDemoMode = false;
   bool _pulse = false;
   Timer? _demoTimer;
+  Timer? _readingTimer;
+  int _countdown = 10;
+  bool _canBlink = false;
   String _blinkStatus = "Initializing...";
 
   @override
@@ -666,7 +669,7 @@ class _ResponseSelectionScreenState extends State<ResponseSelectionScreen> {
     });
 
     _blinkService.selectionStream.listen((index) {
-      if (mounted && _useBlink) {
+      if (mounted && _useBlink && _canBlink) {
         if (index < _options.length) {
           _speak(_options[index]);
         }
@@ -722,6 +725,7 @@ class _ResponseSelectionScreenState extends State<ResponseSelectionScreen> {
     _cameraController?.dispose();
     _blinkService.dispose();
     _demoTimer?.cancel();
+    _readingTimer?.cancel();
     super.dispose();
   }
 
@@ -733,11 +737,34 @@ class _ResponseSelectionScreenState extends State<ResponseSelectionScreen> {
         setState(() {
           _options = aiOptions.isNotEmpty ? aiOptions : _intent.optionKeys;
           _isAILoading = false;
+          _startReadingTimer();
         });
       }
     } else {
       _options = _intent.optionKeys;
+      _startReadingTimer();
     }
+  }
+
+  void _startReadingTimer() {
+    setState(() {
+      _canBlink = false;
+      _countdown = 10;
+    });
+    _readingTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (mounted) {
+        setState(() {
+          if (_countdown > 0) {
+            _countdown--;
+          } else {
+            _canBlink = true;
+            _readingTimer?.cancel();
+          }
+        });
+      } else {
+        _readingTimer?.cancel();
+      }
+    });
   }
 
   Future<void> _initTts() async {
@@ -856,6 +883,7 @@ class _ResponseSelectionScreenState extends State<ResponseSelectionScreen> {
                 padding: const EdgeInsets.all(24.0),
                 child: Column(
                   children: [
+                    // 1. Question Card
                     GlassCard(
                       blur: 20, opacity: 0.15, color: const Color(0xFF00D2FF),
                       child: Column(
@@ -876,24 +904,35 @@ class _ResponseSelectionScreenState extends State<ResponseSelectionScreen> {
                       ),
                     ),
                     const SizedBox(height: 24),
+                    
+                    // 2. Selected Answer (if any)
                     if (_selectedAnswer.isNotEmpty)
                       Padding(
                         padding: const EdgeInsets.only(bottom: 24),
                         child: Text("Selected: $_selectedAnswer", style: const TextStyle(color: Color(0xFF00FFC2), fontWeight: FontWeight.bold, fontSize: 18)),
                       ),
                     
+                    // 3. Blink Status & Instructions
                     if (_useBlink && !_isAILoading && _selectedAnswer.isEmpty) 
                       Padding(
-                        padding: const EdgeInsets.only(bottom: 16),
+                        padding: const EdgeInsets.only(bottom: 24),
                         child: Column(
                           children: [
-                            Text("Blink Count: $_currentBlinkCount", style: const TextStyle(color: Color(0xFF00FFC2), fontSize: 20, fontWeight: FontWeight.w900)),
-                            const SizedBox(height: 4),
-                            const Text("1 blink: Option 1 | 2 blinks: Option 2 | 3 blinks: Option 3", style: TextStyle(fontSize: 10, color: Colors.white54)),
+                            if (!_canBlink) ...[
+                              Text("Please read the options... $_countdown", style: const TextStyle(color: Colors.orangeAccent, fontSize: 18, fontWeight: FontWeight.bold)),
+                              const SizedBox(height: 8),
+                            ] else ...[
+                              const Text("You can respond now", style: TextStyle(color: Color(0xFF00FFC2), fontSize: 18, fontWeight: FontWeight.bold)),
+                              const SizedBox(height: 8),
+                            ],
+                            Text("Blink Count: $_currentBlinkCount", style: const TextStyle(color: Color(0xFF00FFC2), fontSize: 24, fontWeight: FontWeight.w900)),
+                            const SizedBox(height: 8),
+                            const Text("1 blink: Option 1 | 2 blinks: Option 2 | 3 blinks: Option 3", style: TextStyle(fontSize: 12, color: Colors.white54)),
                           ],
                         ),
                       ),
                     
+                    // 4. Mode Toggles
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
@@ -902,15 +941,18 @@ class _ResponseSelectionScreenState extends State<ResponseSelectionScreen> {
                         _OptionToggle(label: "Demo Mode", value: _isDemoMode, onChanged: _toggleDemoMode),
                       ],
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 32),
 
+                    // 5. Response Options
                     if (_isAILoading)
                       const Column(children: [
                         CircularProgressIndicator(color: Color(0xFF00D2FF)),
-                        SizedBox(height: 16),
-                        Text("AI ANALYSING RESPONSE...", style: TextStyle(color: Color(0xFF00D2FF), letterSpacing: 2, fontSize: 13, fontWeight: FontWeight.bold)),
+                        const SizedBox(height: 16),
+                        Text("Analyzing question...", style: TextStyle(color: Color(0xFF00D2FF), letterSpacing: 2, fontSize: 13, fontWeight: FontWeight.bold)),
                       ])
-                    else
+                    else ...[
+                      const Text("AI Generated Responses", style: TextStyle(color: Color(0xFF8BA6B8), fontSize: 14, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
+                      const SizedBox(height: 16),
                       AnimatedOpacity(
                         duration: const Duration(milliseconds: 400),
                         opacity: _selectedAnswer.isNotEmpty ? 0.0 : 1.0,
@@ -923,16 +965,19 @@ class _ResponseSelectionScreenState extends State<ResponseSelectionScreen> {
                                 label: translations[opt]?[_currentLanguage] ?? opt,
                                 color: _getOptionColor(opt),
                                 onPressed: () => _speak(opt),
+                                isSelected: _selectedAnswer == (translations[opt]?[_currentLanguage] ?? opt),
                               ),
                             )).toList(),
                           ),
                         ),
                       ),
+                    ],
+                    
                     if (_selectedAnswer.isNotEmpty)
-                       const Padding(
-                         padding: EdgeInsets.only(top: 8),
-                         child: Text("Listening for next input...", style: TextStyle(color: Colors.white54, fontStyle: FontStyle.italic)),
-                       ),
+                      const Padding(
+                        padding: EdgeInsets.only(top: 8),
+                        child: Text("Listening for next input...", style: TextStyle(color: Colors.white54, fontStyle: FontStyle.italic)),
+                      ),
                   ],
                 ),
               ),
@@ -955,8 +1000,9 @@ class _ResponseButton extends StatefulWidget {
   final String label;
   final Color color;
   final VoidCallback onPressed;
+  final bool isSelected;
 
-  const _ResponseButton({required this.label, required this.color, required this.onPressed});
+  const _ResponseButton({required this.label, required this.color, required this.onPressed, this.isSelected = false});
 
   @override
   State<_ResponseButton> createState() => _ResponseButtonState();
@@ -982,6 +1028,7 @@ class _ResponseButtonState extends State<_ResponseButton> with SingleTickerProvi
 
   @override
   Widget build(BuildContext context) {
+    bool activeGlow = _glow || widget.isSelected;
     return GestureDetector(
       onTapDown: (_) => _controller.forward(),
       onTapUp: (_) {
@@ -999,8 +1046,8 @@ class _ResponseButtonState extends State<_ResponseButton> with SingleTickerProvi
           decoration: BoxDecoration(
             color: const Color(0xFF162D3D),
             borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: widget.color.withValues(alpha: _glow ? 1.0 : 0.4), width: 2),
-            boxShadow: [if (_glow) BoxShadow(color: widget.color.withValues(alpha: 0.5), blurRadius: 20, spreadRadius: 4)],
+            border: Border.all(color: widget.color.withValues(alpha: activeGlow ? 1.0 : 0.4), width: 2),
+            boxShadow: [if (activeGlow) BoxShadow(color: widget.color.withValues(alpha: 0.5), blurRadius: 20, spreadRadius: 4)],
           ),
           child: Center(child: Text(widget.label, style: TextStyle(color: widget.color, fontSize: 24, fontWeight: FontWeight.w900, letterSpacing: 1), semanticsLabel: widget.label)),
         ),
