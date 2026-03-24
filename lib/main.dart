@@ -179,8 +179,16 @@ class GlassCard extends StatelessWidget {
   final double blur;
   final double opacity;
   final Color color;
+  final EdgeInsets? padding;
 
-  const GlassCard({super.key, required this.child, this.blur = 10, this.opacity = 0.1, this.color = Colors.white});
+  const GlassCard({
+    super.key, 
+    required this.child, 
+    this.blur = 10, 
+    this.opacity = 0.1, 
+    this.color = Colors.white,
+    this.padding,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -189,7 +197,7 @@ class GlassCard extends StatelessWidget {
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
         child: Container(
-          padding: const EdgeInsets.all(24),
+          padding: padding ?? const EdgeInsets.all(24),
           decoration: BoxDecoration(
             color: color.withValues(alpha: opacity),
             borderRadius: BorderRadius.circular(24),
@@ -595,8 +603,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
             const Spacer(),
             SizedBox(
               width: double.infinity,
-              height: 54,
-              child: ElevatedButton(onPressed: () => Navigator.pop(context), style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF00D2FF)), child: const Text("Save and Exit")),
+              height: 56,
+              child: ElevatedButton(
+                onPressed: () => Navigator.pop(context), 
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF00D2FF),
+                  foregroundColor: const Color(0xFF162D3D),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  elevation: 4,
+                ), 
+                child: const Text("Save Settings", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              ),
             )
           ],
         ),
@@ -829,7 +846,7 @@ class _ResponseSelectionScreenState extends State<ResponseSelectionScreen> {
           children: [
             if (_useBlink)
               Container(
-                height: MediaQuery.of(context).size.height * 0.40,
+                height: MediaQuery.of(context).size.height * 0.35,
                 width: double.infinity,
                 color: Colors.black,
                 child: Stack(
@@ -863,10 +880,10 @@ class _ResponseSelectionScreenState extends State<ResponseSelectionScreen> {
                       ),
                     ),
                     Align(
-                      alignment: Alignment.center,
+                      alignment: Alignment.bottomCenter,
                       child: Padding(
-                        padding: const EdgeInsets.only(top: 320),
-                        child: Text(_blinkStatus, style: TextStyle(color: _blinkStatus == "Face Detected" || _blinkStatus == "Blink Detected" ? const Color(0xFF00FFC2) : Colors.white, fontSize: 18, fontWeight: FontWeight.bold, backgroundColor: Colors.black54)),
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: Text("Focus on camera", style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 12)),
                       ),
                     ),
                     if (_pulse)
@@ -878,32 +895,56 @@ class _ResponseSelectionScreenState extends State<ResponseSelectionScreen> {
                   ],
                 ),
               ),
+            // 0. Face Status
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Text(
+                _blinkStatus, 
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: _blinkStatus == "Face Detected" || _blinkStatus == "Blink Detected" ? const Color(0xFF00FFC2) : Colors.white, 
+                  fontSize: 16, 
+                  fontWeight: FontWeight.bold
+                )
+              ),
+            ),
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.all(24.0),
                 child: Column(
                   children: [
                     // 1. Question Card
-                    GlassCard(
-                      blur: 20, opacity: 0.15, color: const Color(0xFF00D2FF),
-                      child: Column(
-                        children: [
-                          Text(widget.question, textAlign: TextAlign.center, style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w900, color: Colors.white, height: 1.2)),
-                          if (_isSpeaking) ...[
-                            const SizedBox(height: 16),
-                            const Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(Icons.volume_up, color: Color(0xFF00FFC2), size: 16),
-                                SizedBox(width: 8),
-                                Text("Speaking...", style: TextStyle(color: Color(0xFF00FFC2), fontSize: 13, fontWeight: FontWeight.bold)),
-                              ],
+                    ConstrainedBox(
+                      constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.25),
+                      child: GlassCard(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        blur: 20, opacity: 0.15, color: const Color(0xFF00D2FF),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              widget.question, 
+                              textAlign: TextAlign.center, 
+                              maxLines: 3,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white, height: 1.2)
                             ),
+                            if (_isSpeaking) ...[
+                              const SizedBox(height: 8),
+                              const Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.volume_up, color: Color(0xFF00FFC2), size: 14),
+                                  SizedBox(width: 8),
+                                  Text("Speaking...", style: TextStyle(color: Color(0xFF00FFC2), fontSize: 12, fontWeight: FontWeight.bold)),
+                                ],
+                              ),
+                            ],
                           ],
-                        ],
+                        ),
                       ),
                     ),
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 16),
                     
                     // 2. Selected Answer (if any)
                     if (_selectedAnswer.isNotEmpty)
@@ -947,27 +988,31 @@ class _ResponseSelectionScreenState extends State<ResponseSelectionScreen> {
                     if (_isAILoading)
                       const Column(children: [
                         CircularProgressIndicator(color: Color(0xFF00D2FF)),
-                        const SizedBox(height: 16),
-                        Text("Analyzing question...", style: TextStyle(color: Color(0xFF00D2FF), letterSpacing: 2, fontSize: 13, fontWeight: FontWeight.bold)),
+                        const SizedBox(height: 12),
+                        Text("Analyzing question...", style: TextStyle(color: Color(0xFF00D2FF), letterSpacing: 2, fontSize: 12, fontWeight: FontWeight.bold)),
                       ])
                     else ...[
-                      const Text("AI Generated Responses", style: TextStyle(color: Color(0xFF8BA6B8), fontSize: 14, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
-                      const SizedBox(height: 16),
+                      const Text("AI Generated Responses", style: TextStyle(color: Color(0xFF8BA6B8), fontSize: 13, fontWeight: FontWeight.bold, letterSpacing: 1.1)),
+                      const SizedBox(height: 12),
                       AnimatedOpacity(
                         duration: const Duration(milliseconds: 400),
                         opacity: _selectedAnswer.isNotEmpty ? 0.0 : 1.0,
                         child: IgnorePointer(
                           ignoring: _selectedAnswer.isNotEmpty,
-                          child: Column(
-                            children: _options.map((opt) => Padding(
-                              padding: const EdgeInsets.only(bottom: 16),
-                              child: _ResponseButton(
+                          child: ListView.separated(
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            itemCount: _options.length,
+                            separatorBuilder: (context, index) => const SizedBox(height: 12),
+                            itemBuilder: (context, index) {
+                              final opt = _options[index];
+                              return _ResponseButton(
                                 label: translations[opt]?[_currentLanguage] ?? opt,
                                 color: _getOptionColor(opt),
                                 onPressed: () => _speak(opt),
                                 isSelected: _selectedAnswer == (translations[opt]?[_currentLanguage] ?? opt),
-                              ),
-                            )).toList(),
+                              );
+                            },
                           ),
                         ),
                       ),
