@@ -1,4 +1,4 @@
-name: doctor_patient_app
+name: echomind_ai
 description: "A new Flutter project."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
@@ -41,6 +41,7 @@ dependencies:
   google_mlkit_face_detection: ^0.13.2
   camera: ^0.12.0+1
   google_mlkit_commons: ^0.11.1
+  shared_preferences: ^2.5.4
 
 dev_dependencies:
   flutter_test:

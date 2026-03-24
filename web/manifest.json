@@ -1,6 +1,6 @@
 {
-    "name": "doctor_patient_app",
-    "short_name": "doctor_patient_app",
+    "name": "EchoMind AI",
+    "short_name": "EchoMind AI",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",

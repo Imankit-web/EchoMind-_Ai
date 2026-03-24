@@ -1,4 +1,4 @@
-package com.example.doctor_patient_app
+package com.example.echomind_ai
 
 import io.flutter.embedding.android.FlutterActivity
 

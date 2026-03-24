@@ -9,9 +9,13 @@ import 'dart:async';
 import 'dart:io';
 import 'blink_service.dart';
 import 'ai_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'onboarding_screen.dart';
 
-void main() {
-  runApp(const DoctorPatientApp());
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await AppSettings().init();
+  runApp(const EchoMindAiApp());
 }
 
 enum AppLanguage {
@@ -72,22 +76,55 @@ enum PatientIntent {
 class AppSettings {
   String aiApiKey = '';
   double speechRate = 0.45;
+  String userName = '';
+  bool isFirstRun = true;
+  AppLanguage defaultLanguage = AppLanguage.en;
 
   static final AppSettings _instance = AppSettings._internal();
   factory AppSettings() => _instance;
   AppSettings._internal();
+
+  late SharedPreferences _prefs;
+
+  Future<void> init() async {
+    _prefs = await SharedPreferences.getInstance();
+    aiApiKey = _prefs.getString('aiApiKey') ?? '';
+    speechRate = _prefs.getDouble('speechRate') ?? 0.45;
+    userName = _prefs.getString('userName') ?? '';
+    isFirstRun = _prefs.getBool('isFirstRun') ?? true;
+    final langCode = _prefs.getString('defaultLanguage');
+    if (langCode != null) {
+      defaultLanguage = AppLanguage.values.firstWhere((l) => l.code == langCode, orElse: () => AppLanguage.en);
+    }
+  }
+
+  Future<void> save() async {
+    await _prefs.setString('aiApiKey', aiApiKey);
+    await _prefs.setDouble('speechRate', speechRate);
+    await _prefs.setString('userName', userName);
+    await _prefs.setBool('isFirstRun', isFirstRun);
+    await _prefs.setString('defaultLanguage', defaultLanguage.code);
+  }
 }
 
-class DoctorPatientApp extends StatefulWidget {
-  const DoctorPatientApp({super.key});
+class EchoMindAiApp extends StatefulWidget {
+  const EchoMindAiApp({super.key});
 
   @override
-  State<DoctorPatientApp> createState() => _DoctorPatientAppState();
+  State<EchoMindAiApp> createState() => _EchoMindAiAppState();
 }
 
-class _DoctorPatientAppState extends State<DoctorPatientApp> {
-  AppLanguage _language = AppLanguage.en;
+class _EchoMindAiAppState extends State<EchoMindAiApp> {
+  late AppLanguage _language;
   final List<String> _history = [];
+  late bool _showOnboarding;
+
+  @override
+  void initState() {
+    super.initState();
+    _language = AppSettings().defaultLanguage;
+    _showOnboarding = AppSettings().isFirstRun;
+  }
 
   void _addToHistory(String question) {
     setState(() {
@@ -116,12 +153,23 @@ class _DoctorPatientAppState extends State<DoctorPatientApp> {
           bodyLarge: TextStyle(fontSize: 18, color: Color(0xFF8BA6B8)),
         ),
       ),
-      home: DoctorInputScreen(
-        language: _language, 
-        onLanguageChanged: (l) => setState(() => _language = l),
-        history: _history,
-        onQuestionSubmitted: _addToHistory,
-      ),
+      home: _showOnboarding 
+        ? OnboardingScreen(onComplete: () {
+            setState(() {
+              _language = AppSettings().defaultLanguage;
+              _showOnboarding = false;
+            });
+          })
+        : DoctorInputScreen(
+            language: _language, 
+            onLanguageChanged: (l) {
+              setState(() => _language = l);
+              AppSettings().defaultLanguage = l;
+              AppSettings().save();
+            },
+            history: _history,
+            onQuestionSubmitted: _addToHistory,
+          ),
     );
   }
 }
@@ -231,6 +279,7 @@ class _DoctorInputScreenState extends State<DoctorInputScreen> {
   bool _isListening = false;
   bool _isProcessing = false;
   bool _isReadyForNext = true;
+  Timer? _idleTimer;
 
   @override
   void initState() {
@@ -240,28 +289,41 @@ class _DoctorInputScreenState extends State<DoctorInputScreen> {
   }
 
   void _initSpeech() async {
-    await _speechToText.initialize(
+    bool available = await _speechToText.initialize(
       onStatus: (status) {
         if (status == 'done' || status == 'notListening') {
-          if (_isListening && _questionController.text.isNotEmpty) _handleAutoSubmit();
-          setState(() => _isListening = false);
+          if (_isListening && _questionController.text.trim().isNotEmpty) {
+            _handleAutoSubmit();
+          } else {
+            if (mounted) setState(() => _isListening = false);
+            _idleTimer?.cancel();
+          }
         }
       },
-      onError: (error) => setState(() { _isListening = false; _isProcessing = false; }),
+      onError: (error) {
+        if (mounted) setState(() { _isListening = false; _isProcessing = false; });
+        _idleTimer?.cancel();
+      },
     );
+    if (available && mounted) {
+      _startListening();
+    }
   }
 
   void _handleAutoSubmit() async {
-    setState(() { _isProcessing = true; _isReadyForNext = false; });
+    _idleTimer?.cancel();
+    setState(() { _isProcessing = true; _isReadyForNext = false; _isListening = false; });
     await Future.delayed(const Duration(milliseconds: 1200));
     if (mounted) {
       final q = _questionController.text;
       widget.onQuestionSubmitted(q);
       _questionController.clear();
       await _navigateToResponse(q);
+      
       if (mounted) {
         setState(() { _isProcessing = false; _isReadyForNext = true; });
         _focusNode.requestFocus();
+        _startListening();
       }
     }
   }
@@ -282,22 +344,50 @@ class _DoctorInputScreenState extends State<DoctorInputScreen> {
 
   void _startListening() async {
     if (await Permission.microphone.request().isGranted) {
+      _idleTimer?.cancel();
       setState(() { _isListening = true; _isProcessing = false; _questionController.clear(); });
-      await _speechToText.listen(onResult: (res) => setState(() => _questionController.text = res.recognizedWords), listenFor: const Duration(seconds: 30), pauseFor: const Duration(seconds: 2));
+      
+      await _speechToText.listen(
+        onResult: (res) {
+          if (mounted) {
+            setState(() => _questionController.text = res.recognizedWords);
+            if (res.recognizedWords.trim().isNotEmpty) {
+              _idleTimer?.cancel();
+            }
+          }
+        }, 
+        listenFor: const Duration(seconds: 30), 
+        pauseFor: const Duration(seconds: 2)
+      );
+      
+      _idleTimer = Timer(const Duration(seconds: 5), () {
+        if (mounted && _isListening && _questionController.text.trim().isEmpty) {
+          _stopListening();
+        }
+      });
     } else {
       openAppSettings();
     }
   }
 
   void _stopListening() async {
+    _idleTimer?.cancel();
     await _speechToText.stop();
-    setState(() => _isListening = false);
+    if (mounted) setState(() => _isListening = false);
   }
 
   void _copyHistory() {
     final text = widget.history.join('\n');
     Clipboard.setData(ClipboardData(text: text));
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Session history copied to clipboard')));
+  }
+
+  @override
+  void dispose() {
+    _idleTimer?.cancel();
+    _questionController.dispose();
+    _focusNode.dispose();
+    super.dispose();
   }
 
   @override
@@ -318,10 +408,10 @@ class _DoctorInputScreenState extends State<DoctorInputScreen> {
                    AnimatedContainer(
                     duration: const Duration(milliseconds: 500),
                     width: 8, height: 8, 
-                    decoration: BoxDecoration(shape: BoxShape.circle, color: _isListening ? const Color(0xFF00FFC2) : (_isReadyForNext ? const Color(0xFF00FFC2) : Colors.orangeAccent)),
+                    decoration: BoxDecoration(shape: BoxShape.circle, color: _isProcessing ? Colors.orangeAccent : (_isListening ? const Color(0xFF00FFC2) : const Color(0xFF00FFC2))),
                   ),
                   const SizedBox(width: 8),
-                  Text(_isListening ? "Listening for next question..." : (_isReadyForNext ? "Ready" : "System Ready"), style: TextStyle(fontSize: 12, color: _isReadyForNext || _isListening ? const Color(0xFF00FFC2) : Colors.white.withValues(alpha: 0.6))),
+                  Text(_isProcessing ? "Processing..." : (_isListening ? "Listening for next question..." : "Ready"), style: TextStyle(fontSize: 12, color: const Color(0xFF00FFC2).withValues(alpha: 0.8))),
                 ],
               ),
             ],
@@ -349,84 +439,88 @@ class _DoctorInputScreenState extends State<DoctorInputScreen> {
       ),
       body: Stack(
         children: [
-          Padding(
-            padding: const EdgeInsets.all(24.0),
-            child: Column(
-              children: [
-                const Spacer(flex: 1),
-                GlassCard(
-                  child: Column(
-                    children: [
-                      TextField(
-                        controller: _questionController,
-                        focusNode: _focusNode,
-                        maxLines: 1,
-                        textInputAction: TextInputAction.done,
-                        onSubmitted: (_) => _handleAutoSubmit(),
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-                        decoration: InputDecoration(
-                          hintText: "Ask next question or use mic...",
-                          hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.2)),
-                          border: InputBorder.none,
+          SafeArea(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(24.0),
+              child: Column(
+                children: [
+                  const SizedBox(height: 60),
+                  GlassCard(
+                    child: Column(
+                      children: [
+                        TextField(
+                          controller: _questionController,
+                          focusNode: _focusNode,
+                          maxLines: null,
+                          textInputAction: TextInputAction.done,
+                          onSubmitted: (_) => _handleAutoSubmit(),
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+                          decoration: InputDecoration(
+                            hintText: "Ask medical concern or use mic...",
+                            hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.3)),
+                            border: InputBorder.none,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 12),
-                      SoundWaveMic(isListening: _isListening),
-                      const SizedBox(height: 12),
-                      Semantics(
-                        label: _isListening ? 'Stop Listening' : 'Start Listening',
-                        child: GestureDetector(
-                          onTap: _isListening ? _stopListening : _startListening,
-                          child: Container(
-                            width: 64, height: 64,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              gradient: LinearGradient(colors: _isListening ? [const Color(0xFF00FFC2), const Color(0xFF00D2FF)] : [const Color(0xFF162D3D), const Color(0xFF1E3A4D)]),
-                              boxShadow: [if (_isListening) BoxShadow(color: const Color(0xFF00FFC2).withValues(alpha: 0.4), blurRadius: 15, spreadRadius: 2)],
+                        const SizedBox(height: 16),
+                        SoundWaveMic(isListening: _isListening),
+                        const SizedBox(height: 16),
+                        Semantics(
+                          label: _isListening ? 'Stop Listening' : 'Start Listening',
+                          child: GestureDetector(
+                            onTap: _isListening ? _stopListening : _startListening,
+                            child: Container(
+                              width: 72, height: 72,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                gradient: LinearGradient(colors: _isListening ? [const Color(0xFF00FFC2), const Color(0xFF00D2FF)] : [const Color(0xFF162D3D), const Color(0xFF1E3A4D)]),
+                                boxShadow: [
+                                  if (_isListening) BoxShadow(color: const Color(0xFF00FFC2).withValues(alpha: 0.5), blurRadius: 20, spreadRadius: 4),
+                                  BoxShadow(color: Colors.black.withValues(alpha: 0.2), blurRadius: 10, offset: const Offset(0, 4)),
+                                ],
+                              ),
+                              child: Icon(_isListening ? Icons.mic : Icons.mic_none, color: Colors.white, size: 32),
                             ),
-                            child: Icon(_isListening ? Icons.mic : Icons.mic_none, color: Colors.white),
                           ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
-                const SizedBox(height: 16),
-                if (_isProcessing) const Text("Analysing Intent...", style: TextStyle(color: Color(0xFF00FFC2), fontWeight: FontWeight.bold)),
-                const Spacer(flex: 2),
-                if (widget.history.isNotEmpty) ...[
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text("Recent Queries", style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF8BA6B8))),
-                      TextButton.icon(onPressed: _copyHistory, icon: const Icon(Icons.copy, size: 14), label: const Text("Copy History", style: TextStyle(fontSize: 12))),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  SizedBox(
-                    height: 120,
-                    child: ListView.separated(
-                      scrollDirection: Axis.horizontal,
-                      itemCount: widget.history.length,
-                      separatorBuilder: (context, index) => const SizedBox(width: 12),
-                      itemBuilder: (context, i) => GestureDetector(
-                        onTap: () => _navigateToResponse(widget.history[i]),
-                        child: Container(
-                          width: 180,
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF162D3D),
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(color: const Color(0xFF00D2FF).withValues(alpha: 0.1)),
+                  const SizedBox(height: 40),
+                  if (widget.history.isNotEmpty) ...[
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text("Recent Queries", style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF8BA6B8))),
+                        TextButton.icon(onPressed: _copyHistory, icon: const Icon(Icons.copy, size: 14), label: const Text("Copy History", style: TextStyle(fontSize: 12))),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      height: 120,
+                      child: ListView.separated(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: widget.history.length,
+                        separatorBuilder: (context, index) => const SizedBox(width: 12),
+                        itemBuilder: (context, i) => GestureDetector(
+                          onTap: () => _navigateToResponse(widget.history[i]),
+                          child: Container(
+                            width: 200,
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF162D3D),
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: const Color(0xFF00D2FF).withValues(alpha: 0.15)),
+                              boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 8, spreadRadius: 1)],
+                            ),
+                            child: Text(widget.history[i], maxLines: 3, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14, color: Colors.white70)),
                           ),
-                          child: Text(widget.history[i], maxLines: 3, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13, color: Colors.white70)),
                         ),
                       ),
                     ),
-                  ),
+                  ],
                 ],
-              ],
+              ),
             ),
           ),
           if (_isProcessing)
@@ -648,7 +742,7 @@ class _ResponseSelectionScreenState extends State<ResponseSelectionScreen> {
 
   Future<void> _initTts() async {
     await _flutterTts.setLanguage(_currentLanguage.code);
-    await _flutterTts.setSpeechRate(0.4);
+    await _flutterTts.setSpeechRate(AppSettings().speechRate);
     await _flutterTts.setPitch(1.0);
     await _flutterTts.setVolume(1.0);
     await _flutterTts.awaitSpeakCompletion(true);
@@ -659,8 +753,8 @@ class _ResponseSelectionScreenState extends State<ResponseSelectionScreen> {
           _isSpeaking = false;
         });
         
-        // Auto reset flow: delay 1.5 seconds then pop to DoctorInputScreen
-        Future.delayed(const Duration(milliseconds: 1500), () {
+        // Auto reset flow: delay 1.0 seconds then pop to DoctorInputScreen
+        Future.delayed(const Duration(milliseconds: 1000), () {
           if (mounted) Navigator.pop(context);
         });
       }
@@ -708,7 +802,7 @@ class _ResponseSelectionScreenState extends State<ResponseSelectionScreen> {
           children: [
             if (_useBlink)
               Container(
-                height: MediaQuery.of(context).size.height * 0.38,
+                height: MediaQuery.of(context).size.height * 0.40,
                 width: double.infinity,
                 color: Colors.black,
                 child: Stack(
@@ -719,6 +813,17 @@ class _ResponseSelectionScreenState extends State<ResponseSelectionScreen> {
                     ColorFiltered(
                       colorFilter: ColorFilter.mode(Colors.black.withValues(alpha: 0.2), BlendMode.darken),
                       child: Container(color: Colors.transparent),
+                    ),
+                    Align(
+                      alignment: Alignment.topCenter,
+                      child: Padding(
+                        padding: const EdgeInsets.only(top: 24),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                          decoration: const BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.all(Radius.circular(20))),
+                          child: const Text("Align your face here", style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                        ),
+                      ),
                     ),
                     Align(
                       alignment: Alignment.center,
@@ -747,7 +852,7 @@ class _ResponseSelectionScreenState extends State<ResponseSelectionScreen> {
                 ),
               ),
             Expanded(
-              child: Padding(
+              child: SingleChildScrollView(
                 padding: const EdgeInsets.all(24.0),
                 child: Column(
                   children: [
@@ -770,7 +875,7 @@ class _ResponseSelectionScreenState extends State<ResponseSelectionScreen> {
                         ],
                       ),
                     ),
-                    const Spacer(),
+                    const SizedBox(height: 24),
                     if (_selectedAnswer.isNotEmpty)
                       Padding(
                         padding: const EdgeInsets.only(bottom: 24),
