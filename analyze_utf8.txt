@@ -1,0 +1,13 @@
+﻿Resolving dependencies...
+Downloading packages...
+  meta 1.17.0 (1.18.2 available)
+  test_api 0.7.10 (0.7.11 available)
+  vector_math 2.2.0 (2.3.0 available)
+Got dependencies!
+3 packages have newer versions incompatible with dependency constraints.
+Try `flutter pub outdated` for more information.
+Analyzing Echo Ai 2.0...                                        
+
+  error - Undefined class 'Timer' - lib\main.dart:540:3 - undefined_class
+  error - Undefined name 'Timer' - lib\main.dart:606:22 - undefined_identifier
+
