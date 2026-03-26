@@ -13,6 +13,7 @@ import 'ai_service.dart';
 import 'memory_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'onboarding_screen.dart';
+import 'setup_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -96,12 +97,16 @@ class EchoMindAiApp extends StatefulWidget {
 
 class _EchoMindAiAppState extends State<EchoMindAiApp> {
   final List<String> _history = [];
-  late bool _showOnboarding;
+  bool _showSetup = false;
+  bool _showOnboarding = false;
 
   @override
   void initState() {
     super.initState();
-    _showOnboarding = AppSettings().isFirstRun;
+    // Setup is required if there's no API key AND it's the first run
+    _showSetup = AppSettings().isFirstRun && AppSettings().aiApiKey.isEmpty;
+    // Onboarding shows if it's first run AND API key is already set (or after setup)
+    _showOnboarding = AppSettings().isFirstRun && AppSettings().aiApiKey.isNotEmpty;
   }
 
   void _addToHistory(String question) {
@@ -131,16 +136,26 @@ class _EchoMindAiAppState extends State<EchoMindAiApp> {
           bodyLarge: TextStyle(fontSize: 18, color: Color(0xFF8BA6B8)),
         ),
       ),
-      home: _showOnboarding 
-        ? OnboardingScreen(onComplete: () {
+      home: _showSetup
+        ? SetupScreen(onComplete: (apiKey) {
+            AppSettings().aiApiKey = apiKey;
+            // Note: We don't set isFirstRun = false yet, we want onboarding next
+            AppSettings().save();
             setState(() {
-              _showOnboarding = false;
+              _showSetup = false;
+              _showOnboarding = true;
             });
           })
-        : DoctorInputScreen(
-            history: _history,
-            onQuestionSubmitted: _addToHistory,
-          ),
+        : _showOnboarding 
+          ? OnboardingScreen(onComplete: () {
+              AppSettings().isFirstRun = false;
+              AppSettings().save();
+              setState(() => _showOnboarding = false);
+            })
+          : DoctorInputScreen(
+              history: _history,
+              onQuestionSubmitted: _addToHistory,
+            ),
     );
   }
 }
