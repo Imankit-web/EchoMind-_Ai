@@ -24,7 +24,9 @@ class AIService {
               'content': 'You are assisting a paralyzed patient in a hospital. '
                   'Generate 3 very short and simple answer options (1-3 words each) to a doctor\'s question. '
                   'No long sentences. Keep answers easy to read quickly. '
-                  'Detect the language of the doctor\'s question and respond ONLY in that same language. '
+                  'Detect the language and SCRIPT of the doctor\'s question and respond ONLY in that same language and script. '
+                  'For example, if the doctor asks in Hindi (Devanagari), respond in Hindi (Devanagari). '
+                  'If the doctor asks in Bengali (Bengali script), respond in Bengali (Bengali script). '
                   'Return ONLY a JSON array of strings: ["option1", "option2", "option3"].'
             },
             {'role': 'user', 'content': 'Doctor asks: "$question"'}

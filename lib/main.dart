@@ -60,7 +60,6 @@ enum PatientIntent {
 class AppSettings {
   String aiApiKey = '';
   double speechRate = 0.45;
-  String userName = '';
   bool isFirstRun = true;
   bool isDemoMode = false;
 
@@ -74,7 +73,6 @@ class AppSettings {
     _prefs = await SharedPreferences.getInstance();
     aiApiKey = _prefs.getString('aiApiKey') ?? '';
     speechRate = _prefs.getDouble('speechRate') ?? 0.45;
-    userName = _prefs.getString('userName') ?? '';
     isFirstRun = _prefs.getBool('isFirstRun') ?? true;
     isDemoMode = _prefs.getBool('isDemoMode') ?? false;
   }
@@ -82,7 +80,6 @@ class AppSettings {
   Future<void> save() async {
     await _prefs.setString('aiApiKey', aiApiKey);
     await _prefs.setDouble('speechRate', speechRate);
-    await _prefs.setString('userName', userName);
     await _prefs.setBool('isFirstRun', isFirstRun);
     await _prefs.setBool('isDemoMode', isDemoMode);
   }
@@ -254,7 +251,6 @@ class _DoctorInputScreenState extends State<DoctorInputScreen> {
   final SpeechToText _speechToText = SpeechToText();
   bool _isListening = false;
   bool _isProcessing = false;
-  bool _isReadyForNext = true;
   bool _isDemoMode = AppSettings().isDemoMode;
   bool _isDemoRunning = false;
   int _currentDemoStep = 0;
@@ -357,7 +353,7 @@ class _DoctorInputScreenState extends State<DoctorInputScreen> {
   void _handleAutoSubmit() async {
     if (_isDemoMode) return;
     _idleTimer?.cancel();
-    setState(() { _isProcessing = true; _isReadyForNext = false; _isListening = false; });
+    setState(() { _isProcessing = true; _isListening = false; });
     await Future.delayed(const Duration(milliseconds: 1200));
     if (mounted) {
       final q = _questionController.text;
@@ -366,7 +362,7 @@ class _DoctorInputScreenState extends State<DoctorInputScreen> {
       await _navigateToResponse(q);
       
       if (mounted) {
-        setState(() { _isProcessing = false; _isReadyForNext = true; });
+        setState(() { _isProcessing = false; });
         _focusNode.requestFocus();
         _startListening();
       }
@@ -582,7 +578,7 @@ class _DoctorInputScreenState extends State<DoctorInputScreen> {
           ),
           if (_isProcessing)
             Container(
-              color: const Color(0xFF0B1E2D).withValues(alpha: 0.8),
+              color: Color(0xFF00FFC2).withValues(alpha: 0.1),
               child: Center(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -702,6 +698,7 @@ class _ResponseSelectionScreenState extends State<ResponseSelectionScreen> {
   final bool _isFadingOut = false;
   bool _isSpeaking = false;
   late PatientIntent _intent;
+  final List<String> _responseBuffer = [];
   
   // Blink Detection State
   final BlinkService _blinkService = BlinkService();
@@ -712,6 +709,7 @@ class _ResponseSelectionScreenState extends State<ResponseSelectionScreen> {
   bool _pulse = false;
   Timer? _demoTimer;
   Timer? _readingTimer;
+  Timer? _autoConfirmTimer;
   int _countdown = 10;
   bool _canBlink = false;
   String _blinkStatus = "Initializing...";
@@ -747,8 +745,21 @@ class _ResponseSelectionScreenState extends State<ResponseSelectionScreen> {
     _blinkService.selectionStream.listen((index) {
       if (mounted && _useBlink && _canBlink && !widget.isDemo) {
         if (index < _options.length) {
-          _speak(_options[index]);
+          _addToResponseBuffer(_options[index]);
+          setState(() {
+            // Give visual feedback via pulse
+            _pulse = true;
+          });
+          Future.delayed(const Duration(milliseconds: 300), () {
+            if (mounted) setState(() => _pulse = false);
+          });
         }
+      }
+    });
+
+    _blinkService.longBlinkStream.listen((_) {
+      if (mounted && _useBlink && _canBlink && !widget.isDemo && _responseBuffer.isNotEmpty) {
+        _triggerFinalSpeech();
       }
     });
   }
@@ -910,26 +921,107 @@ class _ResponseSelectionScreenState extends State<ResponseSelectionScreen> {
     // Basic detection for Indian languages based on character ranges
     for (int i = 0; i < text.length; i++) {
       int code = text.codeUnitAt(i);
-      if (code >= 0x0900 && code <= 0x097F) return 'hi-IN'; // Devanagari (Hindi)
-      if (code >= 0x0980 && code <= 0x09FF) return 'bn-IN'; // Bengali
+      if (code >= 0x0900 && code <= 0x097F) return "hi-IN"; // Devanagari (Hindi)
+      if (code >= 0x0980 && code <= 0x09FF) return "bn-IN"; // Bengali script
     }
-    return 'en-IN';
+    // Default to en-US for natural English pronunciation, as requested by user
+    return "en-US";
+  }
+
+  String _buildFinalSentence() {
+    if (_responseBuffer.isEmpty) return "";
+    
+    String prefix = "";
+    List<String> remaining = List.from(_responseBuffer);
+    
+    final first = remaining.first.toLowerCase();
+    // Support common Yes/No in English/Hindi/Bengali
+    if (first == "yes" || first == "no" || first == "ha" || first == "na" || first == "haan") {
+      prefix = "${remaining.removeAt(0)}, ";
+    }
+    
+    if (remaining.isEmpty) return prefix.replaceAll(", ", "");
+
+    final mainPart = remaining.join(" ").toLowerCase();
+    
+    // Natural language heuristics based on common clinical keywords
+    if (mainPart.contains("pain") && mainPart.contains("chest")) return "${prefix}I have pain in my chest";
+    if (mainPart.contains("pain") && mainPart.contains("head")) return "${prefix}I have pain in my head";
+    if (mainPart.contains("pain")) return "${prefix}I am in pain";
+    if (mainPart.contains("breathing") || mainPart.contains("difficulty")) return "${prefix}I am having difficulty breathing";
+    if (mainPart.contains("water")) return "${prefix}I need some water";
+    if (mainPart.contains("food") || mainPart.contains("hungry")) return "${prefix}I am hungry";
+    if (mainPart.contains("help")) return "${prefix}Please help me";
+    if (mainPart.contains("fine") || mainPart.contains("good") || mainPart.contains("theek")) return "${prefix}I am feeling fine";
+    
+    return prefix + remaining.join(" ");
+  }
+
+  String _formatSpeech(String text) {
+    if (text.isEmpty) return "";
+    
+    // Add a trailing period if missing for natural TTS pausing
+    String formatted = text.trim();
+    if (!formatted.endsWith('.') && !formatted.endsWith('?') && !formatted.endsWith('!')) {
+      formatted += '.';
+    }
+
+    // Capitalize first letter if needed
+    if (formatted.isNotEmpty) {
+      formatted = formatted[0].toUpperCase() + formatted.substring(1);
+    }
+
+    return formatted;
   }
 
   Future<void> _speak(String text) async {
     if (_isFadingOut || _isSpeaking) return;
     
-    final lang = _detectLanguage(text);
-    final enhancedText = text.length < 5 ? (lang == 'hi-IN' ? "$text, मैं हूँ।" : (lang == 'bn-IN' ? "$text, আমি আছি।" : "$text, I am.")) : text;
+    // Clean and trim the text for accurate TTS
+    final cleanText = text.trim();
+    final lang = _detectLanguage(cleanText);
+    
+    // Format the speech output for natural sentences
+    final speechOutput = _formatSpeech(cleanText);
+    
+    // Validation: Log exact text sent to TTS
+    debugPrint('TTS SPEAKING: "$speechOutput" (Original: "$cleanText", Language: $lang)');
     
     setState(() {
-      _selectedAnswer = text;
+      _selectedAnswer = cleanText;
       _isSpeaking = true;
     });
     
     await _flutterTts.stop();
     await _flutterTts.setLanguage(lang);
-    await _flutterTts.speak(enhancedText);
+    await _flutterTts.speak(speechOutput);
+  }
+
+  void _addToResponseBuffer(String opt) {
+    setState(() {
+      _responseBuffer.add(opt);
+    });
+    _resetAutoConfirmTimer();
+  }
+
+  void _resetAutoConfirmTimer() {
+    _autoConfirmTimer?.cancel();
+    _autoConfirmTimer = Timer(const Duration(seconds: 3), () {
+      if (mounted && _responseBuffer.isNotEmpty) {
+        _triggerFinalSpeech();
+      }
+    });
+  }
+
+  void _triggerFinalSpeech() {
+    _autoConfirmTimer?.cancel();
+    final sentence = _buildFinalSentence();
+    if (sentence.isNotEmpty) {
+      _speak(sentence);
+      setState(() {
+        _responseBuffer.clear();
+      });
+    }
   }
 
   @override
@@ -938,7 +1030,10 @@ class _ResponseSelectionScreenState extends State<ResponseSelectionScreen> {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        leading: IconButton(icon: const Icon(Icons.arrow_back_ios_new), onPressed: () => Navigator.pop(context)),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new),
+          onPressed: () => Navigator.pop(context),
+        ),
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 16),
@@ -1064,10 +1159,31 @@ class _ResponseSelectionScreenState extends State<ResponseSelectionScreen> {
                     const SizedBox(height: 16),
                     
                     // 2. Selected Answer (if any)
-                    if (_selectedAnswer.isNotEmpty)
+                    if (_responseBuffer.isNotEmpty)
                       Padding(
                         padding: const EdgeInsets.only(bottom: 24),
-                        child: Text("Selected: $_selectedAnswer", style: const TextStyle(color: Color(0xFF00FFC2), fontWeight: FontWeight.bold, fontSize: 18)),
+                        child: Column(
+                          children: [
+                            const Text("PREVIEW:", style: TextStyle(color: Colors.white54, fontSize: 12, letterSpacing: 1.2)),
+                            const SizedBox(height: 8),
+                            Text(
+                              _responseBuffer.join(" -> "), 
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(color: Color(0xFF00FFC2), fontWeight: FontWeight.bold, fontSize: 28)
+                            ),
+                            const SizedBox(height: 16),
+                            ElevatedButton(
+                              onPressed: _triggerFinalSpeech,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFF00D2FF),
+                                foregroundColor: const Color(0xFF0B1E2D),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                              ),
+                              child: const Text("Confirm", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                            ),
+                          ],
+                        ),
                       ),
                     
                     // 3. Blink Status & Instructions
@@ -1085,7 +1201,7 @@ class _ResponseSelectionScreenState extends State<ResponseSelectionScreen> {
                             ],
                             Text("Blink Count: $_currentBlinkCount", style: const TextStyle(color: Color(0xFF00FFC2), fontSize: 24, fontWeight: FontWeight.w900)),
                             const SizedBox(height: 8),
-                            const Text("1 blink: Option 1 | 2 blinks: Option 2 | 3 blinks: Option 3", style: TextStyle(fontSize: 12, color: Colors.white54)),
+                            const Text("1-3 blinks: Select word | Long Blink: CONFIRM & SPEAK", style: TextStyle(fontSize: 12, color: Colors.white54)),
                           ],
                         ),
                       )
@@ -1108,10 +1224,10 @@ class _ResponseSelectionScreenState extends State<ResponseSelectionScreen> {
 
                     // 5. Response Options
                     if (_isAILoading)
-                      const Column(children: [
-                        CircularProgressIndicator(color: Color(0xFF00D2FF)),
+                      Column(children: [
+                        const CircularProgressIndicator(color: Color(0xFF00D2FF)),
                         const SizedBox(height: 12),
-                        Text("Analyzing question...", style: TextStyle(color: Color(0xFF00D2FF), letterSpacing: 2, fontSize: 12, fontWeight: FontWeight.bold)),
+                        const Text("Analyzing question...", style: TextStyle(color: Color(0xFF00D2FF), letterSpacing: 2, fontSize: 12, fontWeight: FontWeight.bold)),
                       ])
                     else ...[
                       const Text("AI Generated Responses", style: TextStyle(color: Color(0xFF8BA6B8), fontSize: 13, fontWeight: FontWeight.bold, letterSpacing: 1.1)),
@@ -1131,7 +1247,7 @@ class _ResponseSelectionScreenState extends State<ResponseSelectionScreen> {
                               return _ResponseButton(
                                 label: opt,
                                 color: _getOptionColor(opt),
-                                onPressed: () => _speak(opt),
+                                onPressed: () => _addToResponseBuffer(opt),
                                 isSelected: _selectedAnswer == opt,
                               );
                             },
@@ -1254,3 +1370,6 @@ class _OptionToggle extends StatelessWidget {
     );
   }
 }
+
+
+

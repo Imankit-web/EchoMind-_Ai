@@ -34,6 +34,9 @@ class BlinkService {
   final _statusStreamController = StreamController<String>.broadcast();
   Stream<String> get statusStream => _statusStreamController.stream;
 
+  final _longBlinkStreamController = StreamController<bool>.broadcast();
+  Stream<bool> get longBlinkStream => _longBlinkStreamController.stream;
+
   Future<void> processImage(InputImage inputImage) async {
     if (_isDisposed) return;
 
@@ -60,9 +63,19 @@ class BlinkService {
     // Detect blink: Both eyes closed (< 0.3)
     if (leftEyeOpenProb < 0.3 && rightEyeOpenProb < 0.3) {
       _consecutiveBlinkFrames++;
+      // Long blink detection: ~1.2 seconds (approx 18 frames processed at 15fps)
+      if (_consecutiveBlinkFrames == 18) {
+        _longBlinkStreamController.add(true);
+        _statusStreamController.add("Long Blink / Confirm");
+        // Reset blink count to prevent accidental selection on eye open
+        _blinkCount = 0;
+        _countStreamController.add(0);
+        _windowTimer?.cancel();
+      }
     } else {
       // If we had at least 2 consecutive frames of closure, it's a blink
-      if (_consecutiveBlinkFrames >= 2) {
+      // But only if it wasn't already processed as a Long Blink
+      if (_consecutiveBlinkFrames >= 2 && _consecutiveBlinkFrames < 18) {
         _handleBlinkDetected();
       }
       _consecutiveBlinkFrames = 0;
@@ -117,6 +130,7 @@ class BlinkService {
     _countStreamController.close();
     _selectionStreamController.close();
     _statusStreamController.close();
+    _longBlinkStreamController.close();
   }
 
   // Helper to convert CameraImage to InputImage

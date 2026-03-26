@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'main.dart'; 
 
 class OnboardingScreen extends StatefulWidget {
   final VoidCallback onComplete;
@@ -11,99 +10,161 @@ class OnboardingScreen extends StatefulWidget {
 }
 
 class _OnboardingScreenState extends State<OnboardingScreen> {
-  final TextEditingController _nameController = TextEditingController();
-  final TextEditingController _apiKeyController = TextEditingController();
+  final PageController _pageController = PageController();
+  int _currentPage = 0;
+
+  final List<OnboardingStep> _steps = [
+    OnboardingStep(
+      title: "Welcome to Echo Ai 2.0",
+      description: "A hospital-grade communication tool designed for paralyzed patients to express needs effortlessly.",
+      icon: Icons.health_and_safety_rounded,
+    ),
+    OnboardingStep(
+      title: "Blink to Select",
+      description: "Our AI tracks your eyes. Blink naturally to count, and wait a moment to select the highlighted option.",
+      icon: Icons.remove_red_eye_rounded,
+    ),
+    OnboardingStep(
+      title: "Long Blink to Speak",
+      description: "Once you've built your sentence, hold a long blink to trigger the voice synthesis and notify your doctor.",
+      icon: Icons.record_voice_over_rounded,
+    ),
+  ];
 
   @override
-  void initState() {
-    super.initState();
-    _nameController.text = AppSettings().userName;
-    _apiKeyController.text = AppSettings().aiApiKey;
-  }
-
-  void _saveAndContinue() async {
-    final settings = AppSettings();
-    settings.userName = _nameController.text.trim();
-    settings.aiApiKey = _apiKeyController.text.trim();
-    settings.isFirstRun = false;
-    await settings.save();
-    
-    widget.onComplete();
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24.0),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const Icon(Icons.health_and_safety, size: 80, color: Color(0xFF00D2FF)),
-                const SizedBox(height: 24),
-                const Text(
-                  "Welcome to EchoMind AI",
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900, color: Colors.white),
+      body: Container(
+        decoration: const BoxDecoration(
+          color: Color(0xFF0B1E2D),
+        ),
+        child: SafeArea(
+          child: Column(
+            children: [
+              Expanded(
+                child: PageView.builder(
+                  controller: _pageController,
+                  onPageChanged: (index) => setState(() => _currentPage = index),
+                  itemCount: _steps.length,
+                  itemBuilder: (context, index) {
+                    final step = _steps[index];
+                    return Padding(
+                      padding: const EdgeInsets.all(40.0),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            step.icon,
+                            size: 100,
+                            color: const Color(0xFF00D2FF),
+                          ),
+                          const SizedBox(height: 48),
+                          Text(
+                            step.title,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              fontSize: 28,
+                              fontWeight: FontWeight.w900,
+                              color: Colors.white,
+                              letterSpacing: -1,
+                            ),
+                          ),
+                          const SizedBox(height: 24),
+                          Text(
+                            step.description,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              fontSize: 18,
+                              color: Color(0xFF8BA6B8),
+                              height: 1.5,
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
                 ),
-                const SizedBox(height: 8),
-                const Text(
-                  "Doctor Assist Mode Setup",
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 16, color: Color(0xFF8BA6B8)),
-                ),
-                const SizedBox(height: 48),
-                GlassCard(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text("Doctor Name (Optional)", style: TextStyle(color: Color(0xFF00D2FF), fontWeight: FontWeight.bold)),
-                      const SizedBox(height: 8),
-                      TextField(
-                        controller: _nameController,
-                        decoration: InputDecoration(
-                          hintText: "Dr. Smith",
-                          hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.2)),
-                          border: const OutlineInputBorder(),
-                          isDense: true,
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 40),
+                child: Column(
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: List.generate(
+                        _steps.length,
+                        (index) => AnimatedContainer(
+                          duration: const Duration(milliseconds: 300),
+                          margin: const EdgeInsets.symmetric(horizontal: 4),
+                          width: _currentPage == index ? 24 : 8,
+                          height: 8,
+                          decoration: BoxDecoration(
+                            color: _currentPage == index
+                                ? const Color(0xFF00FFC2)
+                                : Colors.white24,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
                         ),
                       ),
-                      const SizedBox(height: 24),
-                      const Text("Groq API Key (Recommended)", style: TextStyle(color: Color(0xFF00D2FF), fontWeight: FontWeight.bold)),
-                      const SizedBox(height: 8),
-                      TextField(
-                        controller: _apiKeyController,
-                        obscureText: true,
-                        decoration: InputDecoration(
-                          hintText: "Enter your Groq API Key",
-                          hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.2)),
-                          border: const OutlineInputBorder(),
-                          isDense: true,
+                    ),
+                    const SizedBox(height: 40),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 56,
+                      child: ElevatedButton(
+                        onPressed: () {
+                          if (_currentPage < _steps.length - 1) {
+                            _pageController.nextPage(
+                              duration: const Duration(milliseconds: 500),
+                              curve: Curves.easeOutCubic,
+                            );
+                          } else {
+                            widget.onComplete();
+                          }
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF00D2FF),
+                          foregroundColor: const Color(0xFF0B1E2D),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          elevation: 0,
+                        ),
+                        child: Text(
+                          _currentPage == _steps.length - 1 ? "GET STARTED" : "CONTINUE",
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 1.2,
+                          ),
                         ),
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 48),
-                ElevatedButton(
-                  onPressed: _saveAndContinue,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF00FFC2),
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                    elevation: 8,
-                    shadowColor: const Color(0xFF00FFC2).withValues(alpha: 0.5),
-                  ),
-                  child: const Text("Save & Continue", style: TextStyle(color: Color(0xFF162D3D), fontSize: 18, fontWeight: FontWeight.bold)),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),
     );
   }
+}
+
+class OnboardingStep {
+  final String title;
+  final String description;
+  final IconData icon;
+
+  OnboardingStep({
+    required this.title,
+    required this.description,
+    required this.icon,
+  });
 }
