@@ -711,12 +711,12 @@ class _ResponseSelectionScreenState extends State<ResponseSelectionScreen> {
 
   // Derives the current status label/emoji/color from app state
   ({String label, String emoji, Color color}) get _systemStatus {
-    if (_isSpeaking)        return (label: 'Speaking',             emoji: '🔊', color: const Color(0xFF00FFC2));
-    if (_responseBuffer.isNotEmpty) return (label: 'Building response', emoji: '🧾', color: const Color(0xFFF59E0B));
-    if (_isAILoading)       return (label: 'Analyzing question',   emoji: '🧠', color: const Color(0xFF00D2FF));
-    if (_useBlink && _options.isEmpty && !_isAILoading) return (label: 'Listening',       emoji: '🎤', color: const Color(0xFF00D2FF));
-    if (_options.isNotEmpty) return (label: 'AI Generated Options', emoji: '⚡', color: const Color(0xFF00FFC2));
-    return (label: 'Ready for next input', emoji: '✅', color: const Color(0xFF00FFC2));
+    if (_isSpeaking)        return (label: 'Speaking...',           emoji: '🔊', color: const Color(0xFF00FFC2));
+    if (_isAILoading && _responseBuffer.isEmpty) return (label: 'Analyzing Question...', emoji: '🧠', color: const Color(0xFF00D2FF));
+    if (_isAILoading && _responseBuffer.isNotEmpty) return (label: 'Generating Next Steps...', emoji: '⚡', color: const Color(0xFF00D2FF));
+    if (_options.isNotEmpty && _selectedAnswer.isEmpty) return (label: 'Waiting for Input', emoji: '⏳', color: const Color(0xFFF59E0B));
+    if (_useBlink && _options.isEmpty && !_isAILoading) return (label: 'Listening for Input', emoji: '🎤', color: const Color(0xFF00D2FF));
+    return (label: 'Ready', emoji: '✅', color: const Color(0xFF00FFC2));
   }
   
   // Blink Detection State
@@ -1162,12 +1162,15 @@ class _ResponseSelectionScreenState extends State<ResponseSelectionScreen> {
                         child: Text("Focus on camera", style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 12)),
                       ),
                     ),
-                    if (_pulse)
-                      Container(
-                        decoration: BoxDecoration(
-                          border: Border.all(color: const Color(0xFF00FFC2), width: 8),
-                        ),
-                      ),
+                     if (_pulse)
+                       AnimatedContainer(
+                         duration: const Duration(milliseconds: 200),
+                         decoration: BoxDecoration(
+                           boxShadow: [
+                             BoxShadow(color: const Color(0xFF00FFC2).withValues(alpha: 0.3), blurRadius: 40, spreadRadius: 10),
+                           ],
+                         ),
+                       ),
                   ],
                 ),
               ),
@@ -1215,7 +1218,7 @@ class _ResponseSelectionScreenState extends State<ResponseSelectionScreen> {
                         ),
                       ),
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 24),
                     
                     // 2. Selected Answer (if any)
                     if (_responseBuffer.isNotEmpty)
@@ -1309,14 +1312,28 @@ class _ResponseSelectionScreenState extends State<ResponseSelectionScreen> {
 
                     // 6. Blink Status & Instructions (Now in Footer area)
                     if (_useBlink && !_isAILoading && _selectedAnswer.isEmpty) 
-                      Column(
-                        children: [
-                          const Text("Detection Active", style: TextStyle(color: Color(0xFF00FFC2), fontSize: 14, fontWeight: FontWeight.bold)),
-                          const SizedBox(height: 4),
-                          Text("$_currentBlinkCount Blinks", style: const TextStyle(color: Color(0xFF00FFC2), fontSize: 28, fontWeight: FontWeight.w900)),
-                          const SizedBox(height: 8),
-                          const Text("Blink to select • Long Blink or press Speak to send", style: TextStyle(fontSize: 11, color: Colors.white38, letterSpacing: 0.5, fontWeight: FontWeight.bold)),
-                        ],
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        child: GlassCard(
+                          padding: const EdgeInsets.all(16),
+                          color: const Color(0xFF00FFC2),
+                          opacity: 0.05,
+                          child: Column(
+                            children: [
+                              const Text("Detection Active", style: TextStyle(color: Color(0xFF00FFC2), fontSize: 13, fontWeight: FontWeight.w900, letterSpacing: 1.2)),
+                              const SizedBox(height: 8),
+                              Text("$_currentBlinkCount Blinks", style: const TextStyle(color: Color(0xFF00FFC2), fontSize: 32, fontWeight: FontWeight.w900)),
+                              const SizedBox(height: 12),
+                              const Divider(color: Colors.white10, height: 1),
+                              const SizedBox(height: 12),
+                              const Text(
+                                "Select options: 1-3 blinks\nConfirm & Speak: Long-blink or press Speak",
+                                textAlign: TextAlign.center,
+                                style: TextStyle(fontSize: 12, color: Colors.white70, letterSpacing: 0.5, fontWeight: FontWeight.bold, height: 1.4),
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
                     
                     const SizedBox(height: 32),
@@ -1554,11 +1571,11 @@ class _FaceGuideState extends State<_FaceGuide> with SingleTickerProviderStateMi
     Color borderColor = Colors.white38;
     bool isLocked = false;
 
-    if (widget.status.contains("Stable") || widget.status.contains("Blink")) {
+    if (widget.status.contains("Stable")) {
       displayStatus = "Face Locked ✅";
       borderColor = const Color(0xFF00FFC2);
       isLocked = true;
-    } else if (widget.status.contains("Detected")) {
+    } else if (widget.status.contains("Blink") || widget.status.contains("Detected")) {
       displayStatus = "Detecting...";
       borderColor = Colors.orangeAccent;
     }
