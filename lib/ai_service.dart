@@ -1,11 +1,10 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import 'main.dart' show AppLanguage;
 
 class AIService {
   static const String _baseUrl = 'https://api.groq.com/openai/v1/chat/completions';
 
-  static Future<List<String>> generateOptions(String question, AppLanguage language, String apiKey) async {
+  static Future<List<String>> generateOptions(String question, String apiKey) async {
     if (apiKey.isEmpty || apiKey == 'YOUR_GROQ_API_KEY') {
       return []; 
     }
@@ -23,9 +22,9 @@ class AIService {
             {
               'role': 'system',
               'content': 'You are assisting a paralyzed patient in a hospital. '
-                  'Generate 3 short, clear, medically relevant answer options to a doctor\'s question. '
-                  'Avoid single-word or irrelevant answers like "Hi" or "Here". '
-                  'The response MUST be in ${language.name}. '
+                  'Generate 3 very short and simple answer options (1-3 words each) to a doctor\'s question. '
+                  'No long sentences. Keep answers easy to read quickly. '
+                  'Detect the language of the doctor\'s question and respond ONLY in that same language. '
                   'Return ONLY a JSON array of strings: ["option1", "option2", "option3"].'
             },
             {'role': 'user', 'content': 'Doctor asks: "$question"'}

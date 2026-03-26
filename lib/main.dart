@@ -18,39 +18,23 @@ void main() async {
   runApp(const EchoMindAiApp());
 }
 
-enum AppLanguage {
-  en('English', 'en-IN'),
-  hi('Hindi', 'hi-IN'),
-  bn('Bengali', 'bn-IN');
 
-  final String name;
-  final String code;
-  const AppLanguage(this.name, this.code);
+
+
+class DemoStep {
+  final String question;
+  final List<String> options;
+  final String autoSelect;
+
+  const DemoStep({required this.question, required this.options, required this.autoSelect});
 }
 
-final Map<String, Map<AppLanguage, String>> translations = {
-  'Yes': {AppLanguage.en: 'Yes', AppLanguage.hi: 'हाँ', AppLanguage.bn: 'হ্যাঁ'},
-  'No': {AppLanguage.en: 'No', AppLanguage.hi: 'नहीं', AppLanguage.bn: 'না'},
-  'Severe': {AppLanguage.en: 'Severe', AppLanguage.hi: 'গম্ভীর', AppLanguage.bn: 'গুরুতর'},
-  'Good': {AppLanguage.en: 'Good', AppLanguage.hi: 'अच्छा', AppLanguage.bn: 'ভালো'},
-  'Okay': {AppLanguage.en: 'Okay', AppLanguage.hi: 'ঠিক है', AppLanguage.bn: 'ঠিক আছে'},
-  'Bad': {AppLanguage.en: 'Bad', AppLanguage.hi: 'খারাৰ', AppLanguage.bn: 'খারাপ'},
-  'Urgent': {AppLanguage.en: 'Urgent', AppLanguage.hi: 'তৎকাল', AppLanguage.bn: 'জরুরী'},
-  "I don't know": {AppLanguage.en: "I don't know", AppLanguage.hi: 'पता नहीं', AppLanguage.bn: 'জানিনা'},
-  'Food/Water': {AppLanguage.en: 'Food/Water', AppLanguage.hi: 'खाना/पानी', AppLanguage.bn: 'খাবার/জল'},
-};
-
-final Map<String, Map<AppLanguage, String>> enhancedSentences = {
-  'Yes': {AppLanguage.en: 'Yes, I am.', AppLanguage.hi: 'हाँ, मैं हूँ।', AppLanguage.bn: 'হ্যাঁ, আমি আছি।'},
-  'No': {AppLanguage.en: 'No, I am not.', AppLanguage.hi: 'नहीं, मैं नहीं हूँ।', AppLanguage.bn: 'না, আমি নই।'},
-  'Severe': {AppLanguage.en: 'I am in severe pain.', AppLanguage.hi: 'मुझे बहुत दर्द हो रहा है।', AppLanguage.bn: 'আমার খুব ব্যথা করছে।'},
-  'Good': {AppLanguage.en: 'I am feeling good.', AppLanguage.hi: 'मैं अच्छा महसूस कर रहा हूँ।', AppLanguage.bn: 'আমি ভালো বোধ করছি।'},
-  'Okay': {AppLanguage.en: 'I am okay right now.', AppLanguage.hi: 'मैं अभी ठीक हूँ।', AppLanguage.bn: 'আমি এখন ঠিক আছি।'},
-  'Bad': {AppLanguage.en: 'I am not feeling well.', AppLanguage.hi: 'मेरी तबीयत ठीक नहीं है।', AppLanguage.bn: 'আমার শরীর ভালো নেই।'},
-  'Urgent': {AppLanguage.en: 'Please help, it is urgent.', AppLanguage.hi: 'कृपया मदद करें, यह तत्काल है।', AppLanguage.bn: 'দয়া করে সাহায্য করুন, এটা জরুরী।'},
-  "I don't know": {AppLanguage.en: "I don't know the answer.", AppLanguage.hi: 'मुझे इसका जवाब नहीं पता।', AppLanguage.bn: 'আমি এর উত্তর জানি না।'},
-  'Food/Water': {AppLanguage.en: 'I need food or water.', AppLanguage.hi: 'मुझे खाने या पानी की जरूरत है।', AppLanguage.bn: 'আমার খাবার বা জলের প্রয়োজন।'},
-};
+final List<DemoStep> demoSteps = [
+  const DemoStep(question: "Do you feel pain?", options: ["Yes", "No"], autoSelect: "Yes"),
+  const DemoStep(question: "Is it severe?", options: ["Mild", "Severe"], autoSelect: "Mild"),
+  const DemoStep(question: "Where is the pain?", options: ["Head", "Chest", "Back"], autoSelect: "Chest"),
+  const DemoStep(question: "Are you breathing properly?", options: ["Yes", "No", "Difficulty"], autoSelect: "Difficulty"),
+];
 
 enum PatientIntent {
   condition('Condition', ['Good', 'Okay', 'Bad']),
@@ -78,7 +62,7 @@ class AppSettings {
   double speechRate = 0.45;
   String userName = '';
   bool isFirstRun = true;
-  AppLanguage defaultLanguage = AppLanguage.en;
+  bool isDemoMode = false;
 
   static final AppSettings _instance = AppSettings._internal();
   factory AppSettings() => _instance;
@@ -92,10 +76,7 @@ class AppSettings {
     speechRate = _prefs.getDouble('speechRate') ?? 0.45;
     userName = _prefs.getString('userName') ?? '';
     isFirstRun = _prefs.getBool('isFirstRun') ?? true;
-    final langCode = _prefs.getString('defaultLanguage');
-    if (langCode != null) {
-      defaultLanguage = AppLanguage.values.firstWhere((l) => l.code == langCode, orElse: () => AppLanguage.en);
-    }
+    isDemoMode = _prefs.getBool('isDemoMode') ?? false;
   }
 
   Future<void> save() async {
@@ -103,7 +84,7 @@ class AppSettings {
     await _prefs.setDouble('speechRate', speechRate);
     await _prefs.setString('userName', userName);
     await _prefs.setBool('isFirstRun', isFirstRun);
-    await _prefs.setString('defaultLanguage', defaultLanguage.code);
+    await _prefs.setBool('isDemoMode', isDemoMode);
   }
 }
 
@@ -115,14 +96,12 @@ class EchoMindAiApp extends StatefulWidget {
 }
 
 class _EchoMindAiAppState extends State<EchoMindAiApp> {
-  late AppLanguage _language;
   final List<String> _history = [];
   late bool _showOnboarding;
 
   @override
   void initState() {
     super.initState();
-    _language = AppSettings().defaultLanguage;
     _showOnboarding = AppSettings().isFirstRun;
   }
 
@@ -156,17 +135,10 @@ class _EchoMindAiAppState extends State<EchoMindAiApp> {
       home: _showOnboarding 
         ? OnboardingScreen(onComplete: () {
             setState(() {
-              _language = AppSettings().defaultLanguage;
               _showOnboarding = false;
             });
           })
         : DoctorInputScreen(
-            language: _language, 
-            onLanguageChanged: (l) {
-              setState(() => _language = l);
-              AppSettings().defaultLanguage = l;
-              AppSettings().save();
-            },
             history: _history,
             onQuestionSubmitted: _addToHistory,
           ),
@@ -263,15 +235,11 @@ class _SoundWaveMicState extends State<SoundWaveMic> with SingleTickerProviderSt
 }
 
 class DoctorInputScreen extends StatefulWidget {
-  final AppLanguage language;
-  final Function(AppLanguage) onLanguageChanged;
   final List<String> history;
   final Function(String) onQuestionSubmitted;
 
   const DoctorInputScreen({
     super.key, 
-    required this.language, 
-    required this.onLanguageChanged, 
     required this.history,
     required this.onQuestionSubmitted,
   });
@@ -287,19 +255,87 @@ class _DoctorInputScreenState extends State<DoctorInputScreen> {
   bool _isListening = false;
   bool _isProcessing = false;
   bool _isReadyForNext = true;
+  bool _isDemoMode = AppSettings().isDemoMode;
+  bool _isDemoRunning = false;
+  int _currentDemoStep = 0;
   Timer? _idleTimer;
 
   @override
   void initState() {
     super.initState();
     _initSpeech();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _focusNode.requestFocus());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _focusNode.requestFocus();
+      if (_isDemoMode) {
+        _runDemoIteration();
+      }
+    });
+  }
+
+  void _toggleDemoMode(bool val) {
+    if (mounted) {
+      setState(() {
+        _isDemoMode = val;
+        AppSettings().isDemoMode = val;
+        AppSettings().save();
+        if (_isDemoMode) {
+          if (!_isDemoRunning) {
+            _isDemoRunning = true;
+            _currentDemoStep = 0;
+            _stopListening();
+            _runDemoIteration();
+          }
+        } else {
+          _isDemoRunning = false;
+          _isProcessing = false;
+          _questionController.clear();
+          _startListening();
+        }
+      });
+    }
+  }
+
+  void _runDemoIteration() async {
+    if (!_isDemoMode || !_isDemoRunning || !mounted) return;
+    
+    if (_currentDemoStep >= demoSteps.length) {
+      setState(() {
+        _isDemoMode = false;
+        _isDemoRunning = false;
+        _isProcessing = false;
+        _questionController.clear();
+        AppSettings().isDemoMode = false;
+        AppSettings().save();
+      });
+      _startListening();
+      return;
+    }
+    
+    final step = demoSteps[_currentDemoStep];
+    
+    setState(() {
+      _questionController.text = step.question;
+      _isProcessing = true;
+    });
+    
+    // Step 1: Show question -> wait 2-3 sec
+    await Future.delayed(const Duration(seconds: 3));
+    
+    if (!_isDemoMode || !_isDemoRunning || !mounted) return;
+    
+    // Step 2-4: Show options -> wait 3-4 sec -> Highlight -> Speak
+    await _navigateToResponse(step.question, isDemo: true, demoOptions: step.options, demoAutoSelect: step.autoSelect);
+    
+    if (!_isDemoMode || !_isDemoRunning || !mounted) return;
+    
+    _currentDemoStep++;
+    _runDemoIteration();
   }
 
   void _initSpeech() async {
     bool available = await _speechToText.initialize(
       onStatus: (status) {
-        if (status == 'done' || status == 'notListening') {
+        if (!_isDemoMode && (status == 'done' || status == 'notListening')) {
           if (_isListening && _questionController.text.trim().isNotEmpty) {
             _handleAutoSubmit();
           } else {
@@ -313,12 +349,13 @@ class _DoctorInputScreenState extends State<DoctorInputScreen> {
         _idleTimer?.cancel();
       },
     );
-    if (available && mounted) {
+    if (available && mounted && !_isDemoMode) {
       _startListening();
     }
   }
 
   void _handleAutoSubmit() async {
+    if (_isDemoMode) return;
     _idleTimer?.cancel();
     setState(() { _isProcessing = true; _isReadyForNext = false; _isListening = false; });
     await Future.delayed(const Duration(milliseconds: 1200));
@@ -336,14 +373,15 @@ class _DoctorInputScreenState extends State<DoctorInputScreen> {
     }
   }
 
-  Future<void> _navigateToResponse(String question) async {
+  Future<void> _navigateToResponse(String question, {bool isDemo = false, List<String> demoOptions = const [], String demoAutoSelect = ''}) async {
     await Navigator.push(
       context, 
       PageRouteBuilder(
         pageBuilder: (context, animation, secondaryAnimation) => ResponseSelectionScreen(
           question: question, 
-          language: widget.language, 
-          onLanguageChanged: widget.onLanguageChanged
+          isDemo: isDemo,
+          demoOptions: demoOptions,
+          demoAutoSelect: demoAutoSelect,
         ),
         transitionsBuilder: (context, animation, secondaryAnimation, child) => FadeTransition(opacity: animation, child: child),
       )
@@ -351,6 +389,7 @@ class _DoctorInputScreenState extends State<DoctorInputScreen> {
   }
 
   void _startListening() async {
+    if (_isDemoMode) return;
     if (await Permission.microphone.request().isGranted) {
       _idleTimer?.cancel();
       setState(() { _isListening = true; _isProcessing = false; _questionController.clear(); });
@@ -407,39 +446,49 @@ class _DoctorInputScreenState extends State<DoctorInputScreen> {
           backgroundColor: Colors.transparent,
           elevation: 0,
           toolbarHeight: 80,
-          title: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text("Doctor Assist Mode", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF00D2FF))),
-              Row(
-                children: [
-                   AnimatedContainer(
-                    duration: const Duration(milliseconds: 500),
-                    width: 8, height: 8, 
-                    decoration: BoxDecoration(shape: BoxShape.circle, color: _isProcessing ? Colors.orangeAccent : (_isListening ? const Color(0xFF00FFC2) : const Color(0xFF00FFC2))),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(_isProcessing ? "Processing..." : (_isListening ? "Listening for next question..." : "Ready"), style: TextStyle(fontSize: 12, color: const Color(0xFF00FFC2).withValues(alpha: 0.8))),
-                ],
-              ),
-            ],
+          title: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 200),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text("Doctor Assist", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF00D2FF), overflow: TextOverflow.ellipsis)),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    AnimatedContainer(
+                      duration: const Duration(milliseconds: 500),
+                      width: 6, height: 6, 
+                      decoration: BoxDecoration(shape: BoxShape.circle, color: _isProcessing ? Colors.orangeAccent : (_isListening ? const Color(0xFF00FFC2) : const Color(0xFF00FFC2))),
+                    ),
+                    const SizedBox(width: 4),
+                    Flexible(
+                      child: Text(_isProcessing ? "Processing..." : (_isListening ? "Listening..." : "Ready"), style: TextStyle(fontSize: 10, color: const Color(0xFF00FFC2).withValues(alpha: 0.8), overflow: TextOverflow.ellipsis)),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
           actions: [
-            IconButton(
-              icon: const Icon(Icons.settings, color: Color(0xFF00D2FF)),
-              onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const SettingsScreen())),
-            ),
             Padding(
-              padding: const EdgeInsets.only(right: 20),
-              child: PopupMenuButton<AppLanguage>(
-                initialValue: widget.language,
-                onSelected: widget.onLanguageChanged,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  decoration: BoxDecoration(borderRadius: BorderRadius.circular(20), border: Border.all(color: const Color(0xFF00D2FF).withValues(alpha: 0.3))),
-                  child: Row(children: [const Icon(Icons.language, size: 16, color: Color(0xFF00D2FF)), const SizedBox(width: 8), Text(widget.language.name, style: const TextStyle(fontSize: 14))]),
+              padding: const EdgeInsets.only(right: 8),
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.settings, color: Color(0xFF00D2FF), size: 18),
+                      onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const SettingsScreen())),
+                    ),
+                    _OptionToggle(
+                      label: "Demo", 
+                      value: _isDemoMode, 
+                      onChanged: _toggleDemoMode
+                    ),
+                  ],
                 ),
-                itemBuilder: (context) => AppLanguage.values.map((l) => PopupMenuItem(value: l, child: Text(l.name))).toList(),
               ),
             )
           ],
@@ -534,13 +583,16 @@ class _DoctorInputScreenState extends State<DoctorInputScreen> {
           if (_isProcessing)
             Container(
               color: const Color(0xFF0B1E2D).withValues(alpha: 0.8),
-              child: const Center(
+              child: Center(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    CircularProgressIndicator(color: Color(0xFF00FFC2)),
-                    SizedBox(height: 20),
-                    Text("Processing Medical Intent...", style: TextStyle(color: Color(0xFF00FFC2), fontSize: 18, fontWeight: FontWeight.bold)),
+                    const CircularProgressIndicator(color: Color(0xFF00FFC2)),
+                    const SizedBox(height: 20),
+                    const Text("Processing Medical Intent...", style: TextStyle(color: Color(0xFF00FFC2), fontSize: 18, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 8),
+                    if (AppSettings().isDemoMode) 
+                      const Text("Demo Running...", style: TextStyle(color: Colors.orangeAccent, fontSize: 14, fontWeight: FontWeight.bold)),
                   ],
                 ),
               ),
@@ -565,57 +617,59 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text("System Settings"), backgroundColor: Colors.transparent, elevation: 0),
-      body: Padding(
-        padding: const EdgeInsets.all(24.0),
-        child: Column(
-          children: [
-            GlassCard(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text("AI Integration", style: TextStyle(color: Color(0xFF00D2FF), fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: _apiKeyController,
-                    decoration: const InputDecoration(labelText: "Groq API Key", hintText: "Enter your API key", border: OutlineInputBorder()),
-                    onChanged: (val) => AppSettings().aiApiKey = val,
-                  ),
-                  const SizedBox(height: 12),
-                  const Text("Required for natural response generation.", style: TextStyle(fontSize: 12, color: Colors.white24)),
-                ],
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            children: [
+              GlassCard(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text("AI Integration", style: TextStyle(color: Color(0xFF00D2FF), fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: _apiKeyController,
+                      decoration: const InputDecoration(labelText: "Groq API Key", hintText: "Enter your API key", border: OutlineInputBorder()),
+                      onChanged: (val) => AppSettings().aiApiKey = val,
+                    ),
+                    const SizedBox(height: 12),
+                    const Text("Required for natural response generation.", style: TextStyle(fontSize: 12, color: Colors.white24)),
+                  ],
+                ),
               ),
-            ),
-            const SizedBox(height: 24),
-            GlassCard(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text("Speech Control", style: TextStyle(color: Color(0xFF00D2FF), fontWeight: FontWeight.bold)),
-                  Slider(
-                    value: AppSettings().speechRate,
-                    min: 0.1, max: 1.0,
-                    onChanged: (val) => setState(() => AppSettings().speechRate = val),
-                  ),
-                  const Text("Adjust voice output speed.", style: TextStyle(fontSize: 12, color: Colors.white24)),
-                ],
+              const SizedBox(height: 24),
+              GlassCard(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text("Speech Control", style: TextStyle(color: Color(0xFF00D2FF), fontWeight: FontWeight.bold)),
+                    Slider(
+                      value: AppSettings().speechRate,
+                      min: 0.1, max: 1.0,
+                      onChanged: (val) => setState(() => AppSettings().speechRate = val),
+                    ),
+                    const Text("Adjust voice output speed.", style: TextStyle(fontSize: 12, color: Colors.white24)),
+                  ],
+                ),
               ),
-            ),
-            const Spacer(),
-            SizedBox(
-              width: double.infinity,
-              height: 56,
-              child: ElevatedButton(
-                onPressed: () => Navigator.pop(context), 
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF00D2FF),
-                  foregroundColor: const Color(0xFF162D3D),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                  elevation: 4,
-                ), 
-                child: const Text("Save Settings", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-              ),
-            )
-          ],
+              const SizedBox(height: 80),
+              SizedBox(
+                width: double.infinity,
+                height: 56,
+                child: ElevatedButton(
+                  onPressed: () => Navigator.pop(context), 
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF00D2FF),
+                    foregroundColor: const Color(0xFF162D3D),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    elevation: 4,
+                  ), 
+                  child: const Text("Save Settings", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                ),
+              )
+            ],
+          ),
         ),
       ),
     );
@@ -624,10 +678,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
 class ResponseSelectionScreen extends StatefulWidget {
   final String question;
-  final AppLanguage language;
-  final Function(AppLanguage) onLanguageChanged;
+  final bool isDemo;
+  final List<String> demoOptions;
+  final String demoAutoSelect;
 
-  const ResponseSelectionScreen({super.key, required this.question, required this.language, required this.onLanguageChanged});
+  const ResponseSelectionScreen({
+    super.key, 
+    required this.question, 
+    this.isDemo = false,
+    this.demoOptions = const [],
+    this.demoAutoSelect = '',
+  });
 
   @override
   State<ResponseSelectionScreen> createState() => _ResponseSelectionScreenState();
@@ -641,7 +702,6 @@ class _ResponseSelectionScreenState extends State<ResponseSelectionScreen> {
   final bool _isFadingOut = false;
   bool _isSpeaking = false;
   late PatientIntent _intent;
-  late AppLanguage _currentLanguage;
   
   // Blink Detection State
   final BlinkService _blinkService = BlinkService();
@@ -659,7 +719,6 @@ class _ResponseSelectionScreenState extends State<ResponseSelectionScreen> {
   @override
   void initState() {
     super.initState();
-    _currentLanguage = widget.language;
     _intent = PatientIntent.detect(widget.question);
     _initOptions();
     _initTts();
@@ -686,7 +745,7 @@ class _ResponseSelectionScreenState extends State<ResponseSelectionScreen> {
     });
 
     _blinkService.selectionStream.listen((index) {
-      if (mounted && _useBlink && _canBlink) {
+      if (mounted && _useBlink && _canBlink && !widget.isDemo) {
         if (index < _options.length) {
           _speak(_options[index]);
         }
@@ -695,6 +754,10 @@ class _ResponseSelectionScreenState extends State<ResponseSelectionScreen> {
   }
 
   Future<void> _initCamera() async {
+    if (widget.isDemo) {
+      if (mounted) setState(() => _blinkStatus = "Demo Mode Active");
+      return;
+    }
     final cameras = await availableCameras();
     if (cameras.isEmpty) return;
     
@@ -712,8 +775,9 @@ class _ResponseSelectionScreenState extends State<ResponseSelectionScreen> {
     if (mounted) {
       int frameCount = 0;
       _cameraController!.startImageStream((image) {
+        if (widget.isDemo) return;
         frameCount++;
-        if (frameCount % 2 != 0 || !_useBlink || _isDemoMode) return; // Process every 2nd frame
+        if (frameCount % 2 != 0 || !_useBlink) return; // Process every 2nd frame
         
         final inputImage = BlinkService.convertCameraImage(image, front);
         if (inputImage != null) {
@@ -725,6 +789,7 @@ class _ResponseSelectionScreenState extends State<ResponseSelectionScreen> {
   }
 
   void _toggleDemoMode(bool val) {
+    if (widget.isDemo) return; // Ignore local toggle if driving from DoctorInputScreen
     setState(() {
       _isDemoMode = val;
       _demoTimer?.cancel();
@@ -747,20 +812,55 @@ class _ResponseSelectionScreenState extends State<ResponseSelectionScreen> {
   }
 
   void _initOptions() async {
-    if (_intent == PatientIntent.condition || _intent == PatientIntent.unknown) {
-      setState(() => _isAILoading = true);
-      final aiOptions = await AIService.generateOptions(widget.question, _currentLanguage, AppSettings().aiApiKey);
+    if (widget.isDemo && widget.demoOptions.isNotEmpty) {
       if (mounted) {
         setState(() {
-          _options = aiOptions.isNotEmpty ? aiOptions : _intent.optionKeys;
+          _options = widget.demoOptions;
           _isAILoading = false;
           _startReadingTimer();
         });
+        _runDemoSequence();
       }
-    } else {
-      _options = _intent.optionKeys;
-      _startReadingTimer();
+      return;
     }
+    
+    // Always use AI to generate options in the correct language for the question
+    if (widget.isDemo) {
+      setState(() => _options = _intent.optionKeys);
+      _startReadingTimer();
+      return;
+    }
+    
+    setState(() => _isAILoading = true);
+    final aiOptions = await AIService.generateOptions(widget.question, AppSettings().aiApiKey);
+    if (mounted) {
+      setState(() {
+        _options = aiOptions.isNotEmpty ? aiOptions : _intent.optionKeys;
+        _isAILoading = false;
+        _startReadingTimer();
+      });
+    }
+  }
+
+  void _runDemoSequence() async {
+    if (!widget.isDemo || widget.demoAutoSelect.isEmpty) return;
+    
+    // Step 2: Show options -> wait 3-4 sec
+    await Future.delayed(const Duration(seconds: 4));
+    
+    if (!mounted || !widget.isDemo) return;
+    
+    // Step 3: Highlight selected option -> 1 sec
+    setState(() {
+      _selectedAnswer = widget.demoAutoSelect;
+    });
+    
+    await Future.delayed(const Duration(seconds: 1));
+    
+    if (!mounted || !widget.isDemo) return;
+    
+    // Step 4: Speak answer
+    _speak(widget.demoAutoSelect);
   }
 
   void _startReadingTimer() {
@@ -785,7 +885,8 @@ class _ResponseSelectionScreenState extends State<ResponseSelectionScreen> {
   }
 
   Future<void> _initTts() async {
-    await _flutterTts.setLanguage(_currentLanguage.code);
+    // Default to en-IN, will switch dynamically in _speak
+    await _flutterTts.setLanguage('en-IN');
     await _flutterTts.setSpeechRate(AppSettings().speechRate);
     await _flutterTts.setPitch(1.0);
     await _flutterTts.setVolume(1.0);
@@ -805,19 +906,29 @@ class _ResponseSelectionScreenState extends State<ResponseSelectionScreen> {
     });
   }
 
-  Future<void> _speak(String textOrKey) async {
+  String _detectLanguage(String text) {
+    // Basic detection for Indian languages based on character ranges
+    for (int i = 0; i < text.length; i++) {
+      int code = text.codeUnitAt(i);
+      if (code >= 0x0900 && code <= 0x097F) return 'hi-IN'; // Devanagari (Hindi)
+      if (code >= 0x0980 && code <= 0x09FF) return 'bn-IN'; // Bengali
+    }
+    return 'en-IN';
+  }
+
+  Future<void> _speak(String text) async {
     if (_isFadingOut || _isSpeaking) return;
     
-    final tText = translations[textOrKey]?[_currentLanguage] ?? textOrKey;
-    final enhancedText = enhancedSentences[textOrKey]?[_currentLanguage] ?? (tText.length < 5 ? "$tText, I am." : tText);
+    final lang = _detectLanguage(text);
+    final enhancedText = text.length < 5 ? (lang == 'hi-IN' ? "$text, मैं हूँ।" : (lang == 'bn-IN' ? "$text, আমি আছি।" : "$text, I am.")) : text;
     
     setState(() {
-      _selectedAnswer = tText;
+      _selectedAnswer = text;
       _isSpeaking = true;
     });
     
     await _flutterTts.stop();
-    await _flutterTts.setLanguage(_currentLanguage.code);
+    await _flutterTts.setLanguage(lang);
     await _flutterTts.speak(enhancedText);
   }
 
@@ -842,11 +953,12 @@ class _ResponseSelectionScreenState extends State<ResponseSelectionScreen> {
       body: AnimatedOpacity(
         duration: const Duration(milliseconds: 500),
         opacity: _isFadingOut ? 0.0 : 1.0,
-        child: Column(
-          children: [
-            if (_useBlink)
-              Container(
-                height: MediaQuery.of(context).size.height * 0.35,
+        child: SafeArea(
+          child: Column(
+            children: [
+              if (_useBlink)
+                Container(
+                  height: MediaQuery.of(context).size.height * 0.35,
                 width: double.infinity,
                 color: Colors.black,
                 child: Stack(
@@ -902,12 +1014,17 @@ class _ResponseSelectionScreenState extends State<ResponseSelectionScreen> {
                 _blinkStatus, 
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  color: _blinkStatus == "Face Detected" || _blinkStatus == "Blink Detected" ? const Color(0xFF00FFC2) : Colors.white, 
+                  color: widget.isDemo ? Colors.orangeAccent : (_blinkStatus == "Face Detected" || _blinkStatus == "Blink Detected" ? const Color(0xFF00FFC2) : Colors.white), 
                   fontSize: 16, 
                   fontWeight: FontWeight.bold
                 )
               ),
             ),
+            if (widget.isDemo)
+              const Padding(
+                padding: EdgeInsets.only(bottom: 8),
+                child: Text("DEMO RUNNING...", style: TextStyle(color: Colors.orangeAccent, fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 2)),
+              ),
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.all(24.0),
@@ -971,6 +1088,11 @@ class _ResponseSelectionScreenState extends State<ResponseSelectionScreen> {
                             const Text("1 blink: Option 1 | 2 blinks: Option 2 | 3 blinks: Option 3", style: TextStyle(fontSize: 12, color: Colors.white54)),
                           ],
                         ),
+                      )
+                    else if (widget.isDemo && _selectedAnswer.isEmpty)
+                      const Padding(
+                        padding: EdgeInsets.only(bottom: 24),
+                        child: Text("Processing Auto-Selection...", style: TextStyle(color: Colors.orangeAccent, fontSize: 18, fontWeight: FontWeight.bold)),
                       ),
                     
                     // 4. Mode Toggles
@@ -1007,10 +1129,10 @@ class _ResponseSelectionScreenState extends State<ResponseSelectionScreen> {
                             itemBuilder: (context, index) {
                               final opt = _options[index];
                               return _ResponseButton(
-                                label: translations[opt]?[_currentLanguage] ?? opt,
+                                label: opt,
                                 color: _getOptionColor(opt),
                                 onPressed: () => _speak(opt),
-                                isSelected: _selectedAnswer == (translations[opt]?[_currentLanguage] ?? opt),
+                                isSelected: _selectedAnswer == opt,
                               );
                             },
                           ),
@@ -1030,6 +1152,7 @@ class _ResponseSelectionScreenState extends State<ResponseSelectionScreen> {
           ],
         ),
       ),
+    ),
     );
   }
 

@@ -13,21 +13,18 @@ class OnboardingScreen extends StatefulWidget {
 class _OnboardingScreenState extends State<OnboardingScreen> {
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _apiKeyController = TextEditingController();
-  AppLanguage _selectedLanguage = AppLanguage.en;
 
   @override
   void initState() {
     super.initState();
     _nameController.text = AppSettings().userName;
     _apiKeyController.text = AppSettings().aiApiKey;
-    _selectedLanguage = AppSettings().defaultLanguage;
   }
 
   void _saveAndContinue() async {
     final settings = AppSettings();
     settings.userName = _nameController.text.trim();
     settings.aiApiKey = _apiKeyController.text.trim();
-    settings.defaultLanguage = _selectedLanguage;
     settings.isFirstRun = false;
     await settings.save();
     
@@ -73,17 +70,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                           border: const OutlineInputBorder(),
                           isDense: true,
                         ),
-                      ),
-                      const SizedBox(height: 24),
-                      const Text("Preferred Language", style: TextStyle(color: Color(0xFF00D2FF), fontWeight: FontWeight.bold)),
-                      const SizedBox(height: 8),
-                      DropdownButtonFormField<AppLanguage>(
-                        value: _selectedLanguage,
-                        decoration: const InputDecoration(border: OutlineInputBorder(), isDense: true),
-                        items: AppLanguage.values.map((l) => DropdownMenuItem(value: l, child: Text(l.name))).toList(),
-                        onChanged: (val) {
-                          if (val != null) setState(() => _selectedLanguage = val);
-                        },
                       ),
                       const SizedBox(height: 24),
                       const Text("Groq API Key (Recommended)", style: TextStyle(color: Color(0xFF00D2FF), fontWeight: FontWeight.bold)),
