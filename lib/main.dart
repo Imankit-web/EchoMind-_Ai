@@ -450,21 +450,8 @@ class _DoctorInputScreenState extends State<DoctorInputScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Text("Doctor Assist", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF00D2FF), overflow: TextOverflow.ellipsis)),
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    AnimatedContainer(
-                      duration: const Duration(milliseconds: 500),
-                      width: 6, height: 6, 
-                      decoration: BoxDecoration(shape: BoxShape.circle, color: _isProcessing ? Colors.orangeAccent : (_isListening ? const Color(0xFF00FFC2) : const Color(0xFF00FFC2))),
-                    ),
-                    const SizedBox(width: 4),
-                    Flexible(
-                      child: Text(_isProcessing ? "Processing..." : (_isListening ? "Listening..." : "Ready"), style: TextStyle(fontSize: 10, color: const Color(0xFF00FFC2).withValues(alpha: 0.8), overflow: TextOverflow.ellipsis)),
-                    ),
-                  ],
-                ),
+                const Text("EchoMind AI", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF00D2FF), overflow: TextOverflow.ellipsis)),
+                const Text("Assistive Communication System", style: TextStyle(fontSize: 10, color: Colors.white38, overflow: TextOverflow.ellipsis)),
               ],
             ),
           ),
@@ -512,7 +499,7 @@ class _DoctorInputScreenState extends State<DoctorInputScreen> {
                           textAlign: TextAlign.center,
                           style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
                           decoration: InputDecoration(
-                            hintText: "Ask medical concern or use mic...",
+                            hintText: "Type a question or use mic...",
                             hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.3)),
                             border: InputBorder.none,
                           ),
@@ -1248,65 +1235,44 @@ class _ResponseSelectionScreenState extends State<ResponseSelectionScreen> {
                     if (_responseBuffer.isNotEmpty)
                       Padding(
                         padding: const EdgeInsets.only(bottom: 24),
-                        child: Column(
-                          children: [
-                            const Text("PREVIEW:", style: TextStyle(color: Colors.white54, fontSize: 12, letterSpacing: 1.2)),
-                            const SizedBox(height: 8),
-                            Text(
-                              _responseBuffer.join(" -> "), 
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(color: Color(0xFF00FFC2), fontWeight: FontWeight.bold, fontSize: 28)
-                            ),
-                            const SizedBox(height: 16),
-                            ElevatedButton(
-                              onPressed: _triggerFinalSpeech,
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: const Color(0xFF00D2FF),
-                                foregroundColor: const Color(0xFF0B1E2D),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                        child: GlassCard(
+                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+                          color: const Color(0xFF00FFC2),
+                          opacity: 0.08,
+                          blur: 15,
+                          child: Column(
+                            children: [
+                              const Text("YOUR RESPONSE", style: TextStyle(color: Color(0xFF00D2FF), fontSize: 13, fontWeight: FontWeight.w900, letterSpacing: 2.5)),
+                              const SizedBox(height: 16),
+                              Text(
+                                _responseBuffer.join(" → "), 
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(color: Color(0xFF00FFC2), fontWeight: FontWeight.bold, fontSize: 30, letterSpacing: -0.5)
                               ),
-                              child: const Text("Confirm", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                            ),
-                          ],
+                              const SizedBox(height: 24),
+                              SizedBox(
+                                width: 200,
+                                height: 50,
+                                child: ElevatedButton(
+                                  onPressed: _triggerFinalSpeech,
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: const Color(0xFF00D2FF),
+                                    foregroundColor: const Color(0xFF0B1E2D),
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25)),
+                                    elevation: 8,
+                                    shadowColor: const Color(0xFF00D2FF).withValues(alpha: 0.5),
+                                  ),
+                                  child: const Text("SPEAK NOW", style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14, letterSpacing: 1.2)),
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     
                     // 3. Blink Status & Instructions
-                    if (_useBlink && !_isAILoading && _selectedAnswer.isEmpty) 
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 24),
-                        child: Column(
-                          children: [
-                            if (!_canBlink) ...[
-                              Text("Please read the options... $_countdown", style: const TextStyle(color: Colors.orangeAccent, fontSize: 18, fontWeight: FontWeight.bold)),
-                              const SizedBox(height: 8),
-                            ] else ...[
-                              const Text("You can respond now", style: TextStyle(color: Color(0xFF00FFC2), fontSize: 18, fontWeight: FontWeight.bold)),
-                              const SizedBox(height: 8),
-                            ],
-                            Text("Blink Count: $_currentBlinkCount", style: const TextStyle(color: Color(0xFF00FFC2), fontSize: 24, fontWeight: FontWeight.w900)),
-                            const SizedBox(height: 8),
-                            const Text("1-3 blinks: Select word | Long Blink: CONFIRM & SPEAK", style: TextStyle(fontSize: 12, color: Colors.white54)),
-                          ],
-                        ),
-                      )
-                    else if (widget.isDemo && _selectedAnswer.isEmpty)
-                      const Padding(
-                        padding: EdgeInsets.only(bottom: 24),
-                        child: Text("Processing Auto-Selection...", style: TextStyle(color: Colors.orangeAccent, fontSize: 18, fontWeight: FontWeight.bold)),
-                      ),
-                    
-                    // 4. Mode Toggles
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        _OptionToggle(label: "Blink Detection", value: _useBlink, onChanged: (v) => setState(() => _useBlink = v)),
-                        const SizedBox(width: 16),
-                        _OptionToggle(label: "Demo Mode", value: _isDemoMode, onChanged: _toggleDemoMode),
-                      ],
-                    ),
-                    const SizedBox(height: 32),
+                    const SizedBox(height: 16),
+
 
                     // 5. Response Options
                     if (_isAILoading)
@@ -1316,7 +1282,7 @@ class _ResponseSelectionScreenState extends State<ResponseSelectionScreen> {
                         const Text("Analyzing question...", style: TextStyle(color: Color(0xFF00D2FF), letterSpacing: 2, fontSize: 12, fontWeight: FontWeight.bold)),
                       ])
                     else ...[
-                      const Text("AI Generated Responses", style: TextStyle(color: Color(0xFF8BA6B8), fontSize: 13, fontWeight: FontWeight.bold, letterSpacing: 1.1)),
+                      const Text("Available Options", style: TextStyle(color: Color(0xFF8BA6B8), fontSize: 13, fontWeight: FontWeight.bold, letterSpacing: 1.3)),
                       const SizedBox(height: 12),
                       AnimatedOpacity(
                         duration: const Duration(milliseconds: 400),
@@ -1341,6 +1307,37 @@ class _ResponseSelectionScreenState extends State<ResponseSelectionScreen> {
                         ),
                       ),
                     ],
+                    
+                    const SizedBox(height: 48),
+
+                    // 6. Blink Status & Instructions (Now in Footer area)
+                    if (_useBlink && !_isAILoading && _selectedAnswer.isEmpty) 
+                      Column(
+                        children: [
+                          if (!_canBlink) ...[
+                            Text("Reading delay: $_countdown", style: const TextStyle(color: Colors.orangeAccent, fontSize: 14, fontWeight: FontWeight.bold)),
+                          ] else ...[
+                            const Text("Detection Active", style: TextStyle(color: Color(0xFF00FFC2), fontSize: 14, fontWeight: FontWeight.bold)),
+                          ],
+                          const SizedBox(height: 4),
+                          Text("$_currentBlinkCount Blinks", style: const TextStyle(color: Color(0xFF00FFC2), fontSize: 28, fontWeight: FontWeight.w900)),
+                          const SizedBox(height: 8),
+                          const Text("1-3 blinks: Select | Long Blink: Speak", style: TextStyle(fontSize: 11, color: Colors.white38, letterSpacing: 0.5)),
+                        ],
+                      ),
+                    
+                    const SizedBox(height: 32),
+
+                    // 7. System Controls
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        _OptionToggle(label: "Blink Control", value: _useBlink, onChanged: (v) => setState(() => _useBlink = v)),
+                        const SizedBox(width: 16),
+                        _OptionToggle(label: "Simulator", value: _isDemoMode, onChanged: _toggleDemoMode),
+                      ],
+                    ),
+                    const SizedBox(height: 40),
                     
                     if (_selectedAnswer.isNotEmpty)
                       const Padding(
@@ -1414,12 +1411,22 @@ class _ResponseButtonState extends State<_ResponseButton> with SingleTickerProvi
           duration: const Duration(milliseconds: 300),
           height: 72,
           decoration: BoxDecoration(
-            color: const Color(0xFF162D3D),
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: widget.color.withValues(alpha: activeGlow ? 1.0 : 0.4), width: 2),
-            boxShadow: [if (activeGlow) BoxShadow(color: widget.color.withValues(alpha: 0.5), blurRadius: 20, spreadRadius: 4)],
+            color: activeGlow ? widget.color.withValues(alpha: 0.15) : const Color(0xFF162D3D),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: widget.color.withValues(alpha: activeGlow ? 1.0 : 0.3), width: 2),
+            boxShadow: [
+              if (activeGlow) 
+                BoxShadow(color: widget.color.withValues(alpha: 0.3), blurRadius: 20, spreadRadius: 2),
+              BoxShadow(color: Colors.black.withValues(alpha: 0.3), blurRadius: 10, offset: const Offset(0, 4)),
+            ],
           ),
-          child: Center(child: Text(widget.label, style: TextStyle(color: widget.color, fontSize: 24, fontWeight: FontWeight.w900, letterSpacing: 1), semanticsLabel: widget.label)),
+          child: Center(
+            child: Text(
+              widget.label, 
+              style: TextStyle(color: widget.color, fontSize: 22, fontWeight: FontWeight.w900, letterSpacing: 0.5), 
+              semanticsLabel: widget.label
+            )
+          ),
         ),
       ),
     );

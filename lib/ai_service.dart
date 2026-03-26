@@ -28,7 +28,7 @@ class AIService {
                   'Detect the language and SCRIPT of the doctor\'s question and respond ONLY in that same language and script.\n'
                   'Return ONLY a JSON array of strings: ["option1", "option2", "option3"].'
             },
-            {'role': 'user', 'content': 'Doctor asks: "$question"'}
+            {'role': 'user', 'content': 'Incoming Question: "$question"'}
           ],
           'temperature': 0.7,
         }),

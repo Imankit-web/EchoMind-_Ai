@@ -16,7 +16,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   final List<OnboardingStep> _steps = [
     OnboardingStep(
       title: "Welcome to Echo Ai 2.0",
-      description: "A hospital-grade communication tool designed for paralyzed patients to express needs effortlessly.",
+      description: "A premium assistive communication tool designed specifically to help individuals express needs effortlessly.",
       icon: Icons.health_and_safety_rounded,
     ),
     OnboardingStep(
@@ -26,7 +26,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     ),
     OnboardingStep(
       title: "Long Blink to Speak",
-      description: "Once you've built your sentence, hold a long blink to trigger the voice synthesis and notify your doctor.",
+      description: "Once you've built your sentence, hold a long blink to trigger voice synthesis and notify your companion.",
       icon: Icons.record_voice_over_rounded,
     ),
   ];
