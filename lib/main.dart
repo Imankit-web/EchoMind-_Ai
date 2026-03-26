@@ -10,6 +10,7 @@ import 'dart:async';
 import 'dart:io';
 import 'blink_service.dart';
 import 'ai_service.dart';
+import 'memory_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'onboarding_screen.dart';
 
@@ -880,7 +881,12 @@ class _ResponseSelectionScreenState extends State<ResponseSelectionScreen> {
     
     setState(() => _isAILoading = true);
     try {
-      final aiOptions = await AIService.generateOptions(widget.question, AppSettings().aiApiKey);
+      final aiOptions = await AIService.generateOptions(
+        widget.question, 
+        AppSettings().aiApiKey,
+        contextQ: ConversationMemory.lastQuestion,
+        contextA: ConversationMemory.lastAnswer,
+      );
       if (mounted) {
         setState(() {
           _options = aiOptions.isNotEmpty ? aiOptions : _intent.optionKeys;
@@ -1081,6 +1087,9 @@ class _ResponseSelectionScreenState extends State<ResponseSelectionScreen> {
     _autoConfirmTimer?.cancel();
     final sentence = _buildFinalSentence();
     if (sentence.isNotEmpty) {
+      // Save interaction to memory before speaking
+      ConversationMemory.saveInteraction(_displayQuestion, sentence);
+      
       _speak(sentence);
       setState(() {
         _responseBuffer.clear();
@@ -1100,6 +1109,7 @@ class _ResponseSelectionScreenState extends State<ResponseSelectionScreen> {
       _isSpeaking = false;
       _intent = PatientIntent.detect(_displayQuestion);
     });
+    ConversationMemory.clear();
     _blinkService.resetCount();
     _autoConfirmTimer?.cancel();
     _flutterTts.stop();
