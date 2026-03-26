@@ -1161,13 +1161,7 @@ class _ResponseSelectionScreenState extends State<ResponseSelectionScreen> {
                     ),
                     Align(
                       alignment: Alignment.center,
-                      child: Container(
-                        width: 220, height: 280,
-                        decoration: BoxDecoration(
-                          border: Border.all(color: _blinkStatus.contains("Face") || _blinkStatus.contains("Blink") || _blinkStatus.contains("Stable") ? const Color(0xFF00FFC2) : Colors.white38, width: 3),
-                          borderRadius: BorderRadius.circular(150),
-                        ),
-                      ),
+                      child: _FaceGuide(status: _blinkStatus),
                     ),
                     Align(
                       alignment: Alignment.bottomCenter,
@@ -1525,6 +1519,77 @@ class _SystemStatusBar extends StatelessWidget {
             ),
           ],
         ],
+      ),
+    );
+  }
+}
+
+class _FaceGuide extends StatefulWidget {
+  final String status;
+  const _FaceGuide({required this.status});
+
+  @override
+  State<_FaceGuide> createState() => _FaceGuideState();
+}
+
+class _FaceGuideState extends State<_FaceGuide> with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _animation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(vsync: this, duration: const Duration(seconds: 1))..repeat(reverse: true);
+    _animation = Tween<double>(begin: 1.0, end: 1.05).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    String displayStatus = "Align Face";
+    Color borderColor = Colors.white38;
+    bool isLocked = false;
+
+    if (widget.status.contains("Stable") || widget.status.contains("Blink")) {
+      displayStatus = "Face Locked ✅";
+      borderColor = const Color(0xFF00FFC2);
+      isLocked = true;
+    } else if (widget.status.contains("Detected")) {
+      displayStatus = "Detecting...";
+      borderColor = Colors.orangeAccent;
+    }
+
+    return ScaleTransition(
+      scale: _animation,
+      child: Container(
+        width: 220, height: 280,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(150),
+          border: Border.all(color: borderColor, width: 4),
+          boxShadow: [
+            if (isLocked) BoxShadow(color: borderColor.withValues(alpha: 0.5), blurRadius: 25, spreadRadius: 5),
+            BoxShadow(color: Colors.black.withValues(alpha: 0.3), blurRadius: 10),
+          ],
+        ),
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (isLocked) const Icon(Icons.check_circle_outline, color: Color(0xFF00FFC2), size: 48),
+              const SizedBox(height: 12),
+              Text(
+                displayStatus, 
+                textAlign: TextAlign.center,
+                style: TextStyle(color: borderColor, fontSize: 18, fontWeight: FontWeight.w900, letterSpacing: 1, shadows: [Shadow(color: Colors.black.withValues(alpha: 0.5), blurRadius: 8)]),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
