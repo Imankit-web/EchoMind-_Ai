@@ -2,6 +2,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_tts/flutter_tts.dart';
+import 'package:audioplayers/audioplayers.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:camera/camera.dart';
@@ -692,6 +693,11 @@ class ResponseSelectionScreen extends StatefulWidget {
 
 class _ResponseSelectionScreenState extends State<ResponseSelectionScreen> {
   final FlutterTts _flutterTts = FlutterTts();
+  final AudioPlayer _blinkPlayer = AudioPlayer();
+  final AudioPlayer _tapPlayer = AudioPlayer();
+  final AudioPlayer _tonePlayer = AudioPlayer();
+
+  late String _displayQuestion;
   String _selectedAnswer = '';
   List<String> _options = [];
   bool _isAILoading = false;
@@ -699,6 +705,16 @@ class _ResponseSelectionScreenState extends State<ResponseSelectionScreen> {
   bool _isSpeaking = false;
   late PatientIntent _intent;
   final List<String> _responseBuffer = [];
+
+  // Derives the current status label/emoji/color from app state
+  ({String label, String emoji, Color color}) get _systemStatus {
+    if (_isSpeaking)        return (label: 'Speaking',             emoji: '🔊', color: const Color(0xFF00FFC2));
+    if (_responseBuffer.isNotEmpty) return (label: 'Building response', emoji: '🧾', color: const Color(0xFFF59E0B));
+    if (_isAILoading)       return (label: 'Analyzing question',   emoji: '🧠', color: const Color(0xFF00D2FF));
+    if (!_canBlink && _useBlink) return (label: 'Listening',       emoji: '🎤', color: const Color(0xFF00D2FF));
+    if (_options.isNotEmpty) return (label: 'AI Generated Options', emoji: '⚡', color: const Color(0xFF00FFC2));
+    return (label: 'Ready for next input', emoji: '✅', color: const Color(0xFF00FFC2));
+  }
   
   // Blink Detection State
   final BlinkService _blinkService = BlinkService();
@@ -717,11 +733,16 @@ class _ResponseSelectionScreenState extends State<ResponseSelectionScreen> {
   @override
   void initState() {
     super.initState();
-    _intent = PatientIntent.detect(widget.question);
+    _displayQuestion = widget.question;
+    _intent = PatientIntent.detect(_displayQuestion);
     _initOptions();
     _initTts();
     _initCamera();
     _setupBlinkListeners();
+    
+    _blinkPlayer.setPlayerMode(PlayerMode.lowLatency);
+    _tapPlayer.setPlayerMode(PlayerMode.lowLatency);
+    _tonePlayer.setPlayerMode(PlayerMode.lowLatency);
   }
 
   void _setupBlinkListeners() {
@@ -735,6 +756,8 @@ class _ResponseSelectionScreenState extends State<ResponseSelectionScreen> {
 
     _blinkService.blinkStream.listen((_) {
       if (mounted) {
+        _blinkPlayer.play(AssetSource('sounds/blink_click.wav'));
+        HapticFeedback.lightImpact();
         setState(() => _pulse = true);
         Future.delayed(const Duration(milliseconds: 300), () {
           if (mounted) setState(() => _pulse = false);
@@ -769,33 +792,43 @@ class _ResponseSelectionScreenState extends State<ResponseSelectionScreen> {
       if (mounted) setState(() => _blinkStatus = "Demo Mode Active");
       return;
     }
-    final cameras = await availableCameras();
-    if (cameras.isEmpty) return;
-    
-    // Front camera is usually last or has lensDirection front
-    final front = cameras.firstWhere((c) => c.lensDirection == CameraLensDirection.front, orElse: () => cameras.first);
-    
-    _cameraController = CameraController(
-      front, 
-      ResolutionPreset.medium, 
-      enableAudio: false,
-      imageFormatGroup: Platform.isAndroid ? ImageFormatGroup.nv21 : ImageFormatGroup.bgra8888,
-    );
-    await _cameraController!.initialize();
-    
-    if (mounted) {
-      int frameCount = 0;
-      _cameraController!.startImageStream((image) {
-        if (widget.isDemo) return;
-        frameCount++;
-        if (frameCount % 2 != 0 || !_useBlink) return; // Process every 2nd frame
-        
-        final inputImage = BlinkService.convertCameraImage(image, front);
-        if (inputImage != null) {
-          _blinkService.processImage(inputImage);
-        }
-      });
-      setState(() {});
+    try {
+      final cameras = await availableCameras();
+      if (cameras.isEmpty) return;
+      
+      // Front camera is usually last or has lensDirection front
+      final front = cameras.firstWhere((c) => c.lensDirection == CameraLensDirection.front, orElse: () => cameras.first);
+      
+      _cameraController = CameraController(
+        front, 
+        ResolutionPreset.medium, 
+        enableAudio: false,
+        imageFormatGroup: Platform.isAndroid ? ImageFormatGroup.nv21 : ImageFormatGroup.bgra8888,
+      );
+      await _cameraController!.initialize();
+      
+      if (mounted) {
+        int frameCount = 0;
+        _cameraController!.startImageStream((image) {
+          if (widget.isDemo) return;
+          frameCount++;
+          if (frameCount % 2 != 0 || !_useBlink) return; // Process every 2nd frame
+          
+          final inputImage = BlinkService.convertCameraImage(image, front);
+          if (inputImage != null) {
+            _blinkService.processImage(inputImage);
+          }
+        });
+        setState(() {});
+      }
+    } catch (e) {
+      debugPrint('Camera init error: $e');
+      if (mounted) {
+        setState(() {
+          _blinkStatus = 'Camera unavailable — using manual mode';
+          _useBlink = false;
+        });
+      }
     }
   }
 
@@ -814,6 +847,9 @@ class _ResponseSelectionScreenState extends State<ResponseSelectionScreen> {
 
   @override
   void dispose() {
+    _blinkPlayer.dispose();
+    _tapPlayer.dispose();
+    _tonePlayer.dispose();
     _flutterTts.stop();
     _cameraController?.dispose();
     _blinkService.dispose();
@@ -843,13 +879,24 @@ class _ResponseSelectionScreenState extends State<ResponseSelectionScreen> {
     }
     
     setState(() => _isAILoading = true);
-    final aiOptions = await AIService.generateOptions(widget.question, AppSettings().aiApiKey);
-    if (mounted) {
-      setState(() {
-        _options = aiOptions.isNotEmpty ? aiOptions : _intent.optionKeys;
-        _isAILoading = false;
-        _startReadingTimer();
-      });
+    try {
+      final aiOptions = await AIService.generateOptions(widget.question, AppSettings().aiApiKey);
+      if (mounted) {
+        setState(() {
+          _options = aiOptions.isNotEmpty ? aiOptions : _intent.optionKeys;
+          _isAILoading = false;
+          _startReadingTimer();
+        });
+      }
+    } catch (e) {
+      debugPrint('AI options error: $e');
+      if (mounted) {
+        setState(() {
+          _options = ['Yes', 'No', 'Help'];
+          _isAILoading = false;
+          _startReadingTimer();
+        });
+      }
     }
   }
 
@@ -984,6 +1031,10 @@ class _ResponseSelectionScreenState extends State<ResponseSelectionScreen> {
     // Format the speech output for natural sentences
     final speechOutput = _formatSpeech(cleanText);
     
+    // Low-pitch soft pop & custom tone to indicate speaking starts
+    HapticFeedback.mediumImpact();
+    _tonePlayer.play(AssetSource('sounds/speak_tone.wav'));
+    
     // Validation: Log exact text sent to TTS
     debugPrint('TTS SPEAKING: "$speechOutput" (Original: "$cleanText", Language: $lang)');
     
@@ -992,12 +1043,25 @@ class _ResponseSelectionScreenState extends State<ResponseSelectionScreen> {
       _isSpeaking = true;
     });
     
-    await _flutterTts.stop();
-    await _flutterTts.setLanguage(lang);
-    await _flutterTts.speak(speechOutput);
+    try {
+      await _flutterTts.stop();
+      await _flutterTts.setLanguage(lang);
+      await _flutterTts.speak(speechOutput);
+    } catch (e) {
+      debugPrint('TTS error: $e');
+      if (mounted) {
+        setState(() {
+          _isSpeaking = false;
+          _selectedAnswer = '';
+          _blinkStatus = 'Something went wrong, continuing...';
+        });
+      }
+    }
   }
 
   void _addToResponseBuffer(String opt) {
+    _tapPlayer.play(AssetSource('sounds/option_tap.wav'));
+    HapticFeedback.selectionClick();
     setState(() {
       _responseBuffer.add(opt);
     });
@@ -1024,6 +1088,23 @@ class _ResponseSelectionScreenState extends State<ResponseSelectionScreen> {
     }
   }
 
+  void _resetSession() {
+    _tapPlayer.play(AssetSource('sounds/option_tap.wav'));
+    HapticFeedback.mediumImpact();
+    setState(() {
+      _displayQuestion = "Ready for next input";
+      _options = ["Yes", "No", "Help"]; // Safe fallback options
+      _responseBuffer.clear();
+      _selectedAnswer = '';
+      _isAILoading = false;
+      _isSpeaking = false;
+      _intent = PatientIntent.detect(_displayQuestion);
+    });
+    _blinkService.resetCount();
+    _autoConfirmTimer?.cancel();
+    _flutterTts.stop();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -1035,6 +1116,11 @@ class _ResponseSelectionScreenState extends State<ResponseSelectionScreen> {
           onPressed: () => Navigator.pop(context),
         ),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh, color: Colors.orangeAccent),
+            tooltip: 'Reset Session',
+            onPressed: _resetSession,
+          ),
           Padding(
             padding: const EdgeInsets.only(right: 16),
             child: Container(
@@ -1081,7 +1167,7 @@ class _ResponseSelectionScreenState extends State<ResponseSelectionScreen> {
                       child: Container(
                         width: 220, height: 280,
                         decoration: BoxDecoration(
-                          border: Border.all(color: _blinkStatus == "Face Detected" || _blinkStatus == "Blink Detected" ? const Color(0xFF00FFC2) : Colors.white38, width: 3),
+                          border: Border.all(color: _blinkStatus.contains("Face") || _blinkStatus.contains("Blink") || _blinkStatus.contains("Stable") ? const Color(0xFF00FFC2) : Colors.white38, width: 3),
                           borderRadius: BorderRadius.circular(150),
                         ),
                       ),
@@ -1102,24 +1188,14 @@ class _ResponseSelectionScreenState extends State<ResponseSelectionScreen> {
                   ],
                 ),
               ),
-            // 0. Face Status
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              child: Text(
-                _blinkStatus, 
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: widget.isDemo ? Colors.orangeAccent : (_blinkStatus == "Face Detected" || _blinkStatus == "Blink Detected" ? const Color(0xFF00FFC2) : Colors.white), 
-                  fontSize: 16, 
-                  fontWeight: FontWeight.bold
-                )
-              ),
+            // 0. System Status Bar
+            _SystemStatusBar(
+              label: _systemStatus.label,
+              emoji: _systemStatus.emoji,
+              color: _systemStatus.color,
+              blinkDetail: widget.isDemo ? 'DEMO RUNNING...' : _blinkStatus,
+              isDemo: widget.isDemo,
             ),
-            if (widget.isDemo)
-              const Padding(
-                padding: EdgeInsets.only(bottom: 8),
-                child: Text("DEMO RUNNING...", style: TextStyle(color: Colors.orangeAccent, fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 2)),
-              ),
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.all(24.0),
@@ -1135,7 +1211,7 @@ class _ResponseSelectionScreenState extends State<ResponseSelectionScreen> {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Text(
-                              widget.question, 
+                              _displayQuestion, 
                               textAlign: TextAlign.center, 
                               maxLines: 3,
                               overflow: TextOverflow.ellipsis,
@@ -1371,5 +1447,70 @@ class _OptionToggle extends StatelessWidget {
   }
 }
 
+
+
+class _SystemStatusBar extends StatelessWidget {
+  final String label;
+  final String emoji;
+  final Color color;
+  final String blinkDetail;
+  final bool isDemo;
+
+  const _SystemStatusBar({
+    required this.label,
+    required this.emoji,
+    required this.color,
+    required this.blinkDetail,
+    required this.isDemo,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 400),
+      curve: Curves.easeInOut,
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: color.withValues(alpha: 0.4), width: 1.5),
+      ),
+      child: Column(
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(emoji, style: const TextStyle(fontSize: 16)),
+              const SizedBox(width: 8),
+              AnimatedDefaultTextStyle(
+                duration: const Duration(milliseconds: 300),
+                style: TextStyle(
+                  color: color,
+                  fontSize: 15,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 0.5,
+                ),
+                child: Text(label),
+              ),
+            ],
+          ),
+          if (blinkDetail.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(
+              blinkDetail,
+              style: TextStyle(
+                color: isDemo ? Colors.orangeAccent : Colors.white54,
+                fontSize: 11,
+                letterSpacing: 1.2,
+                fontWeight: isDemo ? FontWeight.bold : FontWeight.normal,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
 
 

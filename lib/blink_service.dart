@@ -14,6 +14,7 @@ class BlinkService {
 
   bool _isDisposed = false;
   int _consecutiveBlinkFrames = 0;
+  int _stableFrames = 0;
   DateTime? _lastBlinkTime;
   
   // Blink Counting System
@@ -51,11 +52,17 @@ class BlinkService {
     }
 
     if ((face.headEulerAngleY?.abs() ?? 100) > 15 || (face.headEulerAngleZ?.abs() ?? 100) > 15) {
+      _stableFrames = 0;
       _statusStreamController.add("Align Properly");
       return;
     }
 
-    _statusStreamController.add("Face Detected");
+    _stableFrames++;
+    if (_stableFrames > 10) {
+      _statusStreamController.add("Detection Stable");
+    } else {
+      _statusStreamController.add("Face Detected ✅");
+    }
 
     final leftEyeOpenProb = face.leftEyeOpenProbability!;
     final rightEyeOpenProb = face.rightEyeOpenProbability!;
@@ -92,7 +99,7 @@ class BlinkService {
 
     _lastBlinkTime = now;
     _blinkCount++;
-    _statusStreamController.add("Blink Detected");
+    _statusStreamController.add("Blink Registered 👁️");
     
     // Notify about the single blink (for pulse animation)
     _blinkStreamController.add(_blinkCount);
