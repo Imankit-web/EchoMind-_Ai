@@ -706,12 +706,14 @@ class _ResponseSelectionScreenState extends State<ResponseSelectionScreen> {
   bool _isAILoading = false;
   final bool _isFadingOut = false;
   bool _isSpeaking = false;
+  bool _isEnhancing = false;
   late PatientIntent _intent;
   final List<String> _responseBuffer = [];
 
   // Derives the current status label/emoji/color from app state
   ({String label, String emoji, Color color}) get _systemStatus {
     if (_isSpeaking)        return (label: 'Speaking...',           emoji: '🔊', color: const Color(0xFF00FFC2));
+    if (_isEnhancing)       return (label: 'Enhancing Response...', emoji: '✨', color: const Color(0xFF00FFC2));
     if (_isAILoading && _responseBuffer.isEmpty) return (label: 'Analyzing Question...', emoji: '🧠', color: const Color(0xFF00D2FF));
     if (_isAILoading && _responseBuffer.isNotEmpty) return (label: 'Generating Next Steps...', emoji: '⚡', color: const Color(0xFF00D2FF));
     if (_options.isNotEmpty && _selectedAnswer.isEmpty) return (label: 'Waiting for Input', emoji: '⏳', color: const Color(0xFFF59E0B));
@@ -1064,13 +1066,32 @@ class _ResponseSelectionScreenState extends State<ResponseSelectionScreen> {
   }
 
 
-  void _triggerFinalSpeech() {
-    final sentence = _buildFinalSentence();
-    if (sentence.isNotEmpty) {
-      // Save interaction to memory before speaking
-      ConversationMemory.saveInteraction(_displayQuestion, sentence);
-      
-      _speak(sentence);
+  Future<void> _triggerFinalSpeech() async {
+    final originalSentence = _buildFinalSentence();
+    if (originalSentence.isEmpty) return;
+
+    String sentenceToSpeak = originalSentence;
+
+    // AI Enhancement Layer
+    setState(() => _isEnhancing = true);
+    try {
+      final enhanced = await AIService.enhanceSentence(originalSentence, AppSettings().aiApiKey);
+      if (enhanced != null && enhanced.isNotEmpty) {
+        sentenceToSpeak = enhanced;
+        debugPrint('AI ENHANCED: "$sentenceToSpeak" (Original: "$originalSentence")');
+      }
+    } catch (e) {
+      debugPrint('AI enhancement error: $e');
+    } finally {
+      if (mounted) setState(() => _isEnhancing = false);
+    }
+
+    // Save interaction to memory before speaking
+    ConversationMemory.saveInteraction(_displayQuestion, sentenceToSpeak);
+    
+    _speak(sentenceToSpeak);
+    
+    if (mounted) {
       setState(() {
         _responseBuffer.clear();
       });

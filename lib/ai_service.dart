@@ -55,4 +55,40 @@ class AIService {
       return [];
     }
   }
+
+  static Future<String?> enhanceSentence(String baseSentence, String apiKey) async {
+    if (apiKey.isEmpty || apiKey == 'YOUR_GROQ_API_KEY' || baseSentence.isEmpty) {
+      return null;
+    }
+
+    try {
+      final response = await http.post(
+        Uri.parse(_baseUrl),
+        headers: {
+          'Authorization': 'Bearer $apiKey',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'model': 'llama-3.3-70b-versatile',
+          'messages': [
+            {
+              'role': 'system',
+              'content': 'Improve this sentence to sound natural, clear, and human-like. Keep it short and medically relevant. Return ONLY the improved sentence text.'
+            },
+            {'role': 'user', 'content': 'Input: "$baseSentence"'}
+          ],
+          'temperature': 0.6,
+        }),
+      ).timeout(const Duration(milliseconds: 1000));
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final content = data['choices'][0]['message']['content'] as String;
+        return content.trim();
+      }
+      return null;
+    } catch (e) {
+      return null;
+    }
+  }
 }
