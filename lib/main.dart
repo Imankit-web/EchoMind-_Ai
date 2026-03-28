@@ -88,35 +88,8 @@ class AppSettings {
   }
 }
 
-class EchoMindAiApp extends StatefulWidget {
+class EchoMindAiApp extends StatelessWidget {
   const EchoMindAiApp({super.key});
-
-  @override
-  State<EchoMindAiApp> createState() => _EchoMindAiAppState();
-}
-
-class _EchoMindAiAppState extends State<EchoMindAiApp> {
-  final List<String> _history = [];
-  bool _showSetup = false;
-  bool _showOnboarding = false;
-
-  @override
-  void initState() {
-    super.initState();
-    // Setup is required if there's no API key AND it's the first run
-    _showSetup = AppSettings().isFirstRun && AppSettings().aiApiKey.isEmpty;
-    // Onboarding shows if it's first run AND API key is already set (or after setup)
-    _showOnboarding = AppSettings().isFirstRun && AppSettings().aiApiKey.isNotEmpty;
-  }
-
-  void _addToHistory(String question) {
-    setState(() {
-      if (!_history.contains(question)) {
-        _history.insert(0, question);
-        if (_history.length > 10) _history.removeLast();
-      }
-    });
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -136,7 +109,72 @@ class _EchoMindAiAppState extends State<EchoMindAiApp> {
           bodyLarge: TextStyle(fontSize: 18, color: Color(0xFF8BA6B8)),
         ),
       ),
-      home: _showSetup
+      home: const SplashScreen(),
+    );
+  }
+}
+
+class SplashScreen extends StatefulWidget {
+  const SplashScreen({super.key});
+  @override
+  State<SplashScreen> createState() => _SplashScreenState();
+}
+
+class _SplashScreenState extends State<SplashScreen> {
+  @override
+  void initState() {
+    super.initState();
+    Future.delayed(const Duration(seconds: 2), () {
+      if (mounted) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const MainRoutingScreen()),
+        );
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF0B1E2D),
+      body: Center(
+        child: Image.asset('assets/logo.png', width: 120, height: 120),
+      ),
+    );
+  }
+}
+
+class MainRoutingScreen extends StatefulWidget {
+  const MainRoutingScreen({super.key});
+  @override
+  State<MainRoutingScreen> createState() => _MainRoutingScreenState();
+}
+
+class _MainRoutingScreenState extends State<MainRoutingScreen> {
+  final List<String> _history = [];
+  bool _showSetup = false;
+  bool _showOnboarding = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _showSetup = AppSettings().isFirstRun && AppSettings().aiApiKey.isEmpty;
+    _showOnboarding = AppSettings().isFirstRun && AppSettings().aiApiKey.isNotEmpty;
+  }
+
+  void _addToHistory(String question) {
+    setState(() {
+      if (!_history.contains(question)) {
+        _history.insert(0, question);
+        if (_history.length > 10) _history.removeLast();
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return _showSetup
         ? SetupScreen(onComplete: (apiKey) {
             AppSettings().aiApiKey = apiKey;
             // Note: We don't set isFirstRun = false yet, we want onboarding next
@@ -155,8 +193,7 @@ class _EchoMindAiAppState extends State<EchoMindAiApp> {
           : DoctorInputScreen(
               history: _history,
               onQuestionSubmitted: _addToHistory,
-            ),
-    );
+            );
   }
 }
 
@@ -459,16 +496,23 @@ class _DoctorInputScreenState extends State<DoctorInputScreen> {
           backgroundColor: Colors.transparent,
           elevation: 0,
           toolbarHeight: 80,
-          title: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 200),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text("EchoMind AI", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF00D2FF), overflow: TextOverflow.ellipsis)),
-                const Text("Assistive Communication System", style: TextStyle(fontSize: 10, color: Colors.white38, overflow: TextOverflow.ellipsis)),
-              ],
-            ),
+          title: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Image.asset('assets/logo.png', width: 28, height: 28),
+              const SizedBox(width: 10),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 200),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text("EchoMind AI", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF00D2FF), overflow: TextOverflow.ellipsis)),
+                    const Text("Assistive Communication System", style: TextStyle(fontSize: 10, color: Colors.white38, overflow: TextOverflow.ellipsis)),
+                  ],
+                ),
+              ),
+            ],
           ),
           actions: [
             Padding(

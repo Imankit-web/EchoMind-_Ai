@@ -34,27 +34,34 @@ class _SetupScreenState extends State<SetupScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF0B1E2D),
-      body: Container(
-        width: double.infinity,
-        height: double.infinity,
-        decoration: BoxDecoration(
-          gradient: RadialGradient(
-            center: const Alignment(0.7, -0.6),
-            radius: 1.2,
-            colors: [
-              const Color(0xFF00D2FF).withValues(alpha: 0.1),
-              Colors.transparent,
-            ],
-          ),
-        ),
-        child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 40),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(Icons.settings_suggest_rounded, size: 80, color: Color(0xFF00FFC2)),
-                const SizedBox(height: 32),
+      resizeToAvoidBottomInset: true,
+      body: SafeArea(
+        child: SingleChildScrollView(
+          child: Container(
+            width: double.infinity,
+            constraints: BoxConstraints(
+              minHeight: MediaQuery.of(context).size.height - MediaQuery.of(context).padding.top - MediaQuery.of(context).padding.bottom,
+            ),
+            decoration: BoxDecoration(
+              gradient: RadialGradient(
+                center: const Alignment(0.7, -0.6),
+                radius: 1.2,
+                colors: [
+                  const Color(0xFF00D2FF).withValues(alpha: 0.1),
+                  Colors.transparent,
+                ],
+              ),
+            ),
+            child: Padding(
+              padding: EdgeInsets.only(
+                left: 40, right: 40,
+                bottom: MediaQuery.of(context).viewInsets.bottom,
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Image.asset('assets/logo.png', width: 80, height: 80),
+                  const SizedBox(height: 32),
                 const Text(
                   "Welcome to EchoMind AI",
                   textAlign: TextAlign.center,
@@ -130,8 +137,9 @@ class _SetupScreenState extends State<SetupScreen> {
           ),
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 
   void _launchURL(String url) {
     // Basic clipboard feedback as fallback or just log
