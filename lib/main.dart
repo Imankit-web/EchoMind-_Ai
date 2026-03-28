@@ -709,6 +709,35 @@ class _ResponseSelectionScreenState extends State<ResponseSelectionScreen> {
   bool _isEnhancing = false;
   late PatientIntent _intent;
   final List<String> _responseBuffer = [];
+  Timer? _confirmTimer;
+  int _confirmCountdown = 5;
+
+  bool get _isCriticalCondition {
+    final bufferString = _responseBuffer.join(" ").toLowerCase();
+    bool hasChestPain = (bufferString.contains("pain") || bufferString.contains("hurt")) && bufferString.contains("chest");
+    bool hasBreathingIssues = bufferString.contains("breathing") && (bufferString.contains("difficulty") || bufferString.contains("problem"));
+    bool hasSeverePain = bufferString.contains("severe") && (bufferString.contains("pain") || bufferString.contains("hurt"));
+    return hasChestPain || hasBreathingIssues || hasSeverePain;
+  }
+
+  void _startConfirmTimer() {
+    _confirmTimer?.cancel();
+    setState(() => _confirmCountdown = 5);
+    _confirmTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      setState(() {
+        if (_confirmCountdown > 1) {
+          _confirmCountdown--;
+        } else {
+          timer.cancel();
+          _triggerFinalSpeech();
+        }
+      });
+    });
+  }
 
   // Derives the current status label/emoji/color from app state
   ({String label, String emoji, Color color}) get _systemStatus {
@@ -848,6 +877,7 @@ class _ResponseSelectionScreenState extends State<ResponseSelectionScreen> {
     _cameraController?.dispose();
     _blinkService.dispose();
     _demoTimer?.cancel();
+    _confirmTimer?.cancel();
     super.dispose();
   }
 
@@ -1063,10 +1093,12 @@ class _ResponseSelectionScreenState extends State<ResponseSelectionScreen> {
         });
       }
     }
+    _startConfirmTimer();
   }
 
 
   Future<void> _triggerFinalSpeech() async {
+    _confirmTimer?.cancel();
     final originalSentence = _buildFinalSentence();
     if (originalSentence.isEmpty) return;
 
@@ -1115,516 +1147,483 @@ class _ResponseSelectionScreenState extends State<ResponseSelectionScreen> {
     _flutterTts.stop();
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new),
-          onPressed: () => Navigator.pop(context),
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh, color: Colors.orangeAccent),
-            tooltip: 'Reset Session',
-            onPressed: _resetSession,
-          ),
-          Padding(
-            padding: const EdgeInsets.only(right: 16),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              decoration: BoxDecoration(borderRadius: BorderRadius.circular(20), border: Border.all(color: const Color(0xFF00D2FF).withValues(alpha: 0.3))),
-              child: Row(children: [const Icon(Icons.psychology, size: 16, color: Color(0xFF00D2FF)), const SizedBox(width: 8), Text(_intent.label.toUpperCase(), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold))]),
+  // ─── Clean App Bar ───────────────────────────────────────────────────────────
+  PreferredSizeWidget _buildAppBar() {
+    return AppBar(
+      backgroundColor: Colors.transparent,
+      elevation: 0,
+      centerTitle: true,
+      leading: IconButton(
+        icon: const Icon(Icons.arrow_back_ios_new, size: 18, color: Colors.white70),
+        onPressed: () => Navigator.pop(context),
+      ),
+      title: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 8, height: 8,
+            decoration: BoxDecoration(
+              color: const Color(0xFF00C2FF),
+              shape: BoxShape.circle,
+              boxShadow: [BoxShadow(color: const Color(0xFF00C2FF).withValues(alpha: 0.6), blurRadius: 8)],
             ),
-          )
+          ),
+          const SizedBox(width: 10),
+          const Text('EchoMind', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: Colors.white, letterSpacing: 0.5)),
         ],
       ),
+      actions: [
+        IconButton(
+          icon: const Icon(Icons.refresh_rounded, size: 20, color: Colors.white38),
+          tooltip: 'Reset',
+          onPressed: _resetSession,
+        ),
+        const SizedBox(width: 4),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final screenH = MediaQuery.of(context).size.height;
+    return Scaffold(
+      appBar: _buildAppBar(),
       body: AnimatedOpacity(
         duration: const Duration(milliseconds: 500),
         opacity: _isFadingOut ? 0.0 : 1.0,
         child: SafeArea(
           child: Column(
             children: [
+              // ── Camera Panel (blink detection) ─────────────────────────────
               if (_useBlink)
-                Container(
-                  height: MediaQuery.of(context).size.height * 0.35,
-                width: double.infinity,
-                color: Colors.black,
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    if (_cameraController != null && _cameraController!.value.isInitialized)
-                      CameraPreview(_cameraController!),
-                    ColorFiltered(
-                      colorFilter: ColorFilter.mode(Colors.black.withValues(alpha: 0.2), BlendMode.darken),
-                      child: Container(color: Colors.transparent),
-                    ),
-                    Align(
-                      alignment: Alignment.topCenter,
-                      child: Padding(
-                        padding: const EdgeInsets.only(top: 24),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                          decoration: const BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.all(Radius.circular(20))),
-                          child: const Text("Align your face here", style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
-                        ),
-                      ),
-                    ),
-                    Align(
-                      alignment: Alignment.center,
-                      child: _FaceGuide(status: _blinkStatus),
-                    ),
-                    Align(
-                      alignment: Alignment.bottomCenter,
-                      child: Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
-                        child: Text("Focus on camera", style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 12)),
-                      ),
-                    ),
-                     if (_pulse)
-                       AnimatedContainer(
-                         duration: const Duration(milliseconds: 200),
-                         decoration: BoxDecoration(
-                           boxShadow: [
-                             BoxShadow(color: const Color(0xFF00FFC2).withValues(alpha: 0.3), blurRadius: 40, spreadRadius: 10),
-                           ],
-                         ),
-                       ),
-                  ],
+                _CameraPanel(
+                  controller: _cameraController,
+                  blinkStatus: _blinkStatus,
+                  pulse: _pulse,
+                  height: screenH * 0.27,
                 ),
+
+              // ── Thin status dot strip ──────────────────────────────────────
+              _StatusStrip(
+                isSpeaking: _isSpeaking,
+                isEnhancing: _isEnhancing,
+                isLoading: _isAILoading,
+                blinkCount: _currentBlinkCount,
+                useBlink: _useBlink,
+                isDemo: widget.isDemo,
               ),
-            // 0. System Status Bar
-            _SystemStatusBar(
-              label: _systemStatus.label,
-              emoji: _systemStatus.emoji,
-              color: _systemStatus.color,
-              blinkDetail: widget.isDemo ? 'DEMO RUNNING...' : _blinkStatus,
-              isDemo: widget.isDemo,
-            ),
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(24.0),
-                child: Column(
-                  children: [
-                    // 1. Question Card
-                    ConstrainedBox(
-                      constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.25),
-                      child: GlassCard(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                        blur: 20, opacity: 0.15, color: const Color(0xFF00D2FF),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              _displayQuestion, 
-                              textAlign: TextAlign.center, 
-                              maxLines: 3,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white, height: 1.2)
-                            ),
-                            if (_isSpeaking) ...[
-                              const SizedBox(height: 8),
-                              const Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(Icons.volume_up, color: Color(0xFF00FFC2), size: 14),
-                                  SizedBox(width: 8),
-                                  Text("Speaking...", style: TextStyle(color: Color(0xFF00FFC2), fontSize: 12, fontWeight: FontWeight.bold)),
-                                ],
-                              ),
-                            ],
-                          ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 24),
-                    
-                    // 2. Selected Answer (if any)
-                    if (_responseBuffer.isNotEmpty)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 24),
-                        child: GlassCard(
-                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
-                          color: const Color(0xFF00FFC2),
-                          opacity: 0.08,
-                          blur: 15,
-                          child: Column(
-                            children: [
-                              const Text("BUILDING RESPONSE", style: TextStyle(color: Color(0xFF00D2FF), fontSize: 13, fontWeight: FontWeight.w900, letterSpacing: 2.5)),
-                              const SizedBox(height: 16),
-                              Text(
-                                _responseBuffer.join(" → "), 
-                                textAlign: TextAlign.center,
-                                style: const TextStyle(color: Color(0xFF00FFC2), fontWeight: FontWeight.bold, fontSize: 30, letterSpacing: -0.5)
-                              ),
-                              const SizedBox(height: 24),
-                              SizedBox(
-                                width: 200,
-                                height: 50,
-                                child: ElevatedButton(
-                                  onPressed: _triggerFinalSpeech,
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: const Color(0xFF00D2FF),
-                                    foregroundColor: const Color(0xFF0B1E2D),
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25)),
-                                    elevation: 8,
-                                    shadowColor: const Color(0xFF00D2FF).withValues(alpha: 0.5),
-                                  ),
-                                  child: const Text("SPEAK NOW", style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14, letterSpacing: 1.2)),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    
-                    // 3. Blink Status & Instructions
-                    const SizedBox(height: 16),
 
+              // ── Main scrollable area ───────────────────────────────────────
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
 
-                    // 5. Response Options
+                      // 1. QUESTION
+                      _QuestionCard(question: _displayQuestion),
+                      const SizedBox(height: 20),
+
+                      // 2. LIVE SENTENCE PREVIEW — visual focus of the screen
                       AnimatedSwitcher(
-                        duration: const Duration(milliseconds: 600),
-                        switchInCurve: Curves.easeOutCubic,
-                        switchOutCurve: Curves.easeInCubic,
-                        transitionBuilder: (child, animation) => FadeTransition(opacity: animation, child: ScaleTransition(scale: animation, child: child)),
-                        child: _isAILoading
-                            ? Column(
-                                key: const ValueKey('loading'),
-                                children: [
-                                  const SizedBox(height: 20),
-                                  const CircularProgressIndicator(color: Color(0xFF00D2FF)),
-                                  const SizedBox(height: 12),
-                                  const Text("Generating next steps...", style: TextStyle(color: Color(0xFF00D2FF), letterSpacing: 2, fontSize: 12, fontWeight: FontWeight.bold)),
-                                  const SizedBox(height: 20),
-                                ],
+                        duration: const Duration(milliseconds: 400),
+                        child: _responseBuffer.isNotEmpty
+                            ? _SentencePreviewCard(
+                                key: ValueKey(_responseBuffer.join()),
+                                words: _responseBuffer,
+                                isCritical: _isCriticalCondition,
+                                confirmCountdown: _confirmCountdown,
+                                isTimerActive: _confirmTimer?.isActive ?? false,
+                                onSpeak: _triggerFinalSpeech,
                               )
-                            : Column(
-                                key: ValueKey('options_${_options.join('')}'),
-                                children: [
-                                  const Text("Available Options", style: TextStyle(color: Color(0xFF8BA6B8), fontSize: 13, fontWeight: FontWeight.bold, letterSpacing: 1.3)),
-                                  const SizedBox(height: 12),
-                                  AnimatedOpacity(
-                                    duration: const Duration(milliseconds: 400),
-                                    opacity: _selectedAnswer.isNotEmpty ? 1.0 : 1.0, // Always visible now
-                                    child: ListView.separated(
-                                      shrinkWrap: true,
-                                      physics: const NeverScrollableScrollPhysics(),
-                                      itemCount: _options.length,
-                                      separatorBuilder: (context, index) => const SizedBox(height: 12),
-                                      itemBuilder: (context, index) {
-                                        final opt = _options[index];
-                                        return _ResponseButton(
-                                          label: opt,
-                                          color: _getOptionColor(opt),
-                                          onPressed: () => _addToResponseBuffer(opt),
-                                          isSelected: _selectedAnswer == opt,
-                                        );
-                                      },
-                                    ),
-                                  ),
-                                ],
+                            : const SizedBox.shrink(),
+                      ),
+
+                      const SizedBox(height: 20),
+
+                      // 3. RESPONSE OPTIONS (pill buttons)
+                      AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 500),
+                        switchInCurve: Curves.easeOutCubic,
+                        transitionBuilder: (child, anim) =>
+                            FadeTransition(opacity: anim, child: child),
+                        child: _isAILoading
+                            ? _LoadingDots(key: const ValueKey('loading'))
+                            : _OptionsGrid(
+                                key: ValueKey('opts_${_options.join("")}'),
+                                options: _options,
+                                selectedAnswer: _selectedAnswer,
+                                onSelect: _addToResponseBuffer,
                               ),
                       ),
-                    
-                    const SizedBox(height: 48),
 
-                    // 6. Blink Status & Instructions (Now in Footer area)
-                    if (_useBlink && !_isAILoading && _selectedAnswer.isEmpty) 
-                      Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 8),
-                        child: GlassCard(
-                          padding: const EdgeInsets.all(16),
-                          color: const Color(0xFF00FFC2),
-                          opacity: 0.05,
-                          child: Column(
-                            children: [
-                              const Text("Detection Active", style: TextStyle(color: Color(0xFF00FFC2), fontSize: 13, fontWeight: FontWeight.w900, letterSpacing: 1.2)),
-                              const SizedBox(height: 8),
-                              Text("$_currentBlinkCount Blinks", style: const TextStyle(color: Color(0xFF00FFC2), fontSize: 32, fontWeight: FontWeight.w900)),
-                              const SizedBox(height: 12),
-                              const Divider(color: Colors.white10, height: 1),
-                              const SizedBox(height: 12),
-                              const Text(
-                                "Select options: 1-3 blinks\nConfirm & Speak: Long-blink or press Speak",
-                                textAlign: TextAlign.center,
-                                style: TextStyle(fontSize: 12, color: Colors.white70, letterSpacing: 0.5, fontWeight: FontWeight.bold, height: 1.4),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    
-                    const SizedBox(height: 32),
+                      const SizedBox(height: 28),
 
-                    // 7. System Controls
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        _OptionToggle(label: "Blink Control", value: _useBlink, onChanged: (v) => setState(() => _useBlink = v)),
-                        const SizedBox(width: 16),
-                        _OptionToggle(label: "Simulator", value: _isDemoMode, onChanged: _toggleDemoMode),
-                      ],
-                    ),
-                    const SizedBox(height: 40),
-                    
-                    if (_selectedAnswer.isNotEmpty)
-                      const Padding(
-                        padding: EdgeInsets.only(top: 8),
-                        child: Text("Listening for next input...", style: TextStyle(color: Colors.white54, fontStyle: FontStyle.italic)),
+                      // 4. CONTROLS
+                      _ControlsRow(
+                        useBlink: _useBlink,
+                        isDemoMode: _isDemoMode,
+                        onBlinkToggle: (v) => setState(() => _useBlink = v),
+                        onDemoToggle: _toggleDemoMode,
                       ),
-                  ],
+
+                      const SizedBox(height: 32),
+                    ],
+                  ),
                 ),
               ),
-            ),
-          ],
-        ),
-      ),
-    ),
-    );
-  }
-
-  Color _getOptionColor(String opt) {
-    if (opt == 'Yes' || opt == 'Good') return const Color(0xFF00FFC2);
-    if (opt == 'No' || opt == 'Bad' || opt == 'Urgent') return const Color(0xFFEF4444);
-    if (opt == 'Severe' || opt == 'Okay') return const Color(0xFFF59E0B);
-    return const Color(0xFF00D2FF);
-  }
-}
-
-class _ResponseButton extends StatefulWidget {
-  final String label;
-  final Color color;
-  final VoidCallback onPressed;
-  final bool isSelected;
-
-  const _ResponseButton({required this.label, required this.color, required this.onPressed, this.isSelected = false});
-
-  @override
-  State<_ResponseButton> createState() => _ResponseButtonState();
-}
-
-class _ResponseButtonState extends State<_ResponseButton> with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-  late Animation<double> _scaleAnimation;
-  bool _glow = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(vsync: this, duration: const Duration(milliseconds: 100));
-    _scaleAnimation = Tween<double>(begin: 1.0, end: 0.95).animate(_controller);
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    bool activeGlow = _glow || widget.isSelected;
-    return GestureDetector(
-      onTapDown: (_) => _controller.forward(),
-      onTapUp: (_) {
-        _controller.reverse();
-        setState(() => _glow = true);
-        Future.delayed(const Duration(milliseconds: 500), () { if (mounted) setState(() => _glow = false); });
-        widget.onPressed();
-      },
-      onTapCancel: () => _controller.reverse(),
-      child: ScaleTransition(
-        scale: _scaleAnimation,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 300),
-          height: 72,
-          decoration: BoxDecoration(
-            color: activeGlow ? widget.color.withValues(alpha: 0.15) : const Color(0xFF162D3D),
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: widget.color.withValues(alpha: activeGlow ? 1.0 : 0.3), width: 2),
-            boxShadow: [
-              if (activeGlow) 
-                BoxShadow(color: widget.color.withValues(alpha: 0.3), blurRadius: 20, spreadRadius: 2),
-              BoxShadow(color: Colors.black.withValues(alpha: 0.3), blurRadius: 10, offset: const Offset(0, 4)),
             ],
           ),
-          child: Center(
-            child: Text(
-              widget.label, 
-              style: TextStyle(color: widget.color, fontSize: 22, fontWeight: FontWeight.w900, letterSpacing: 0.5), 
-              semanticsLabel: widget.label
-            )
-          ),
         ),
       ),
     );
   }
+
+  Color _getOptionColor(String opt) => const Color(0xFF00C2FF);
 }
 
-class _OptionToggle extends StatelessWidget {
-  final String label;
-  final bool value;
-  final Function(bool) onChanged;
+// ═══════════════════════════════════════════════════════════════════════════════
+// PREMIUM UI WIDGETS
+// ═══════════════════════════════════════════════════════════════════════════════
 
-  const _OptionToggle({required this.label, required this.value, required this.onChanged});
+// ── Camera Panel ──────────────────────────────────────────────────────────────
+class _CameraPanel extends StatelessWidget {
+  final CameraController? controller;
+  final String blinkStatus;
+  final bool pulse;
+  final double height;
 
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () => onChanged(!value),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        decoration: BoxDecoration(
-          color: value ? const Color(0xFF00FFC2).withValues(alpha: 0.1) : Colors.white.withValues(alpha: 0.05),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: value ? const Color(0xFF00FFC2) : Colors.white24, width: 1),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(value ? Icons.check_circle : Icons.circle_outlined, size: 14, color: value ? const Color(0xFF00FFC2) : Colors.white54),
-            const SizedBox(width: 6),
-            Text(label, style: TextStyle(fontSize: 12, color: value ? const Color(0xFF00FFC2) : Colors.white54, fontWeight: FontWeight.bold)),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-
-
-class _SystemStatusBar extends StatelessWidget {
-  final String label;
-  final String emoji;
-  final Color color;
-  final String blinkDetail;
-  final bool isDemo;
-
-  const _SystemStatusBar({
-    required this.label,
-    required this.emoji,
-    required this.color,
-    required this.blinkDetail,
-    required this.isDemo,
+  const _CameraPanel({
+    required this.controller,
+    required this.blinkStatus,
+    required this.pulse,
+    required this.height,
   });
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 400),
-      curve: Curves.easeInOut,
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: color.withValues(alpha: 0.4), width: 1.5),
-      ),
-      child: Column(
+    final bool isLocked = blinkStatus.contains('Stable');
+    final Color guideColor = isLocked
+        ? const Color(0xFF00C2FF)
+        : blinkStatus.contains('Blink') || blinkStatus.contains('Detected')
+            ? Colors.white54
+            : Colors.white24;
+
+    return Container(
+      height: height,
+      width: double.infinity,
+      color: const Color(0xFF050E1A),
+      child: Stack(
+        fit: StackFit.expand,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(emoji, style: const TextStyle(fontSize: 16)),
-              const SizedBox(width: 8),
-              AnimatedDefaultTextStyle(
-                duration: const Duration(milliseconds: 300),
-                style: TextStyle(
-                  color: color,
-                  fontSize: 15,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 0.5,
-                ),
-                child: Text(label),
-              ),
-            ],
-          ),
-          if (blinkDetail.isNotEmpty) ...[
-            const SizedBox(height: 4),
-            Text(
-              blinkDetail,
-              style: TextStyle(
-                color: isDemo ? Colors.orangeAccent : Colors.white54,
-                fontSize: 11,
-                letterSpacing: 1.2,
-                fontWeight: isDemo ? FontWeight.bold : FontWeight.normal,
+          if (controller != null && controller!.value.isInitialized)
+            CameraPreview(controller!),
+          // Gradient overlay
+          Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Colors.black.withValues(alpha: 0.3),
+                  Colors.transparent,
+                  Colors.black.withValues(alpha: 0.5),
+                ],
               ),
             ),
-          ],
+          ),
+          // Oval face guide
+          Center(
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 400),
+              width: 150, height: 200,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(120),
+                border: Border.all(color: guideColor, width: isLocked ? 3 : 2),
+                boxShadow: isLocked
+                    ? [BoxShadow(color: const Color(0xFF00C2FF).withValues(alpha: 0.4), blurRadius: 20)]
+                    : [],
+              ),
+            ),
+          ),
+          // Blink flash
+          if (pulse)
+            Container(color: const Color(0xFF00C2FF).withValues(alpha: 0.06)),
+          // Bottom hint
+          Positioned(
+            bottom: 10, left: 0, right: 0,
+            child: Center(
+              child: Text(
+                isLocked ? 'Blink to select' : 'Position your face in the oval',
+                style: TextStyle(color: Colors.white.withValues(alpha: 0.45), fontSize: 11),
+              ),
+            ),
+          ),
         ],
       ),
     );
   }
 }
 
-class _FaceGuide extends StatefulWidget {
-  final String status;
-  const _FaceGuide({required this.status});
+// ── Status Strip ──────────────────────────────────────────────────────────────
+class _StatusStrip extends StatelessWidget {
+  final bool isSpeaking, isEnhancing, isLoading, useBlink, isDemo;
+  final int blinkCount;
+
+  const _StatusStrip({
+    required this.isSpeaking,
+    required this.isEnhancing,
+    required this.isLoading,
+    required this.blinkCount,
+    required this.useBlink,
+    required this.isDemo,
+  });
 
   @override
-  State<_FaceGuide> createState() => _FaceGuideState();
+  Widget build(BuildContext context) {
+    String label;
+    Color dot;
+    if (isSpeaking)       { label = 'Speaking';    dot = const Color(0xFF00C2FF); }
+    else if (isEnhancing) { label = 'Enhancing';   dot = const Color(0xFF00C2FF); }
+    else if (isLoading)   { label = 'Thinking...'; dot = Colors.white30; }
+    else if (isDemo)      { label = 'Demo Mode';   dot = Colors.orangeAccent; }
+    else if (useBlink && blinkCount > 0) {
+      label = '$blinkCount blink${blinkCount > 1 ? "s" : ""}';
+      dot = const Color(0xFF00C2FF);
+    } else {
+      return const SizedBox(height: 4);
+    }
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 6),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 300),
+            width: 6, height: 6,
+            decoration: BoxDecoration(
+              color: dot, shape: BoxShape.circle,
+              boxShadow: [BoxShadow(color: dot.withValues(alpha: 0.6), blurRadius: 6)],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(label, style: TextStyle(color: dot, fontSize: 12, fontWeight: FontWeight.w600, letterSpacing: 0.3)),
+        ],
+      ),
+    );
+  }
 }
 
-class _FaceGuideState extends State<_FaceGuide> with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-  late Animation<double> _animation;
+// ── Question Card ─────────────────────────────────────────────────────────────
+class _QuestionCard extends StatelessWidget {
+  final String question;
+  const _QuestionCard({required this.question});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.04),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(
+        question,
+        textAlign: TextAlign.center,
+        maxLines: 3,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(
+          fontSize: 24, fontWeight: FontWeight.w700, color: Colors.white, height: 1.4, letterSpacing: -0.3,
+        ),
+      ),
+    );
+  }
+}
+
+// ── Live Sentence Preview Card ────────────────────────────────────────────────
+class _SentencePreviewCard extends StatelessWidget {
+  final List<String> words;
+  final bool isCritical;
+  final int confirmCountdown;
+  final bool isTimerActive;
+  final VoidCallback onSpeak;
+
+  const _SentencePreviewCard({
+    super.key,
+    required this.words,
+    required this.isCritical,
+    required this.confirmCountdown,
+    required this.isTimerActive,
+    required this.onSpeak,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
+      decoration: BoxDecoration(
+        color: const Color(0xFF00C2FF).withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(24),
+        border: isCritical
+            ? Border.all(color: Colors.redAccent.withValues(alpha: 0.4), width: 1.5)
+            : null,
+        boxShadow: [
+          BoxShadow(color: const Color(0xFF00C2FF).withValues(alpha: 0.08), blurRadius: 30),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          // Critical warning
+          if (isCritical)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.warning_amber_rounded, color: Colors.orangeAccent, size: 14),
+                  const SizedBox(width: 6),
+                  Text('Possible serious condition',
+                      style: TextStyle(color: Colors.orangeAccent.withValues(alpha: 0.9), fontSize: 11, fontWeight: FontWeight.w600)),
+                ],
+              ),
+            ),
+          // Label
+          Text('Building message',
+              style: TextStyle(color: Colors.white.withValues(alpha: 0.3), fontSize: 11, letterSpacing: 1.2, fontWeight: FontWeight.w600)),
+          const SizedBox(height: 14),
+          // ── LARGE LIVE SENTENCE ──────────────────────────────────────────
+          Text(
+            words.join('  ·  '),
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: Colors.white, fontSize: 32, fontWeight: FontWeight.w700, height: 1.3, letterSpacing: -0.5,
+            ),
+          ),
+          const SizedBox(height: 24),
+          // Auto-confirm countdown
+          if (isTimerActive)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Text('Auto-speaking in $confirmCountdown s',
+                  style: TextStyle(color: Colors.white.withValues(alpha: 0.3), fontSize: 11)),
+            ),
+          // Speak button
+          SizedBox(
+            width: double.infinity, height: 52,
+            child: ElevatedButton(
+              onPressed: onSpeak,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF00C2FF),
+                foregroundColor: const Color(0xFF0B1F3A),
+                elevation: 0,
+                shadowColor: Colors.transparent,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              ),
+              child: const Text('Speak Now', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15, letterSpacing: 0.3)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Loading Dots ──────────────────────────────────────────────────────────────
+class _LoadingDots extends StatelessWidget {
+  const _LoadingDots({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 32),
+      child: Column(
+        children: [
+          SizedBox(
+            width: 22, height: 22,
+            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white.withValues(alpha: 0.35)),
+          ),
+          const SizedBox(height: 10),
+          Text('Generating options', style: TextStyle(color: Colors.white.withValues(alpha: 0.25), fontSize: 12, letterSpacing: 0.5)),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Options Grid (pill buttons) ───────────────────────────────────────────────
+class _OptionsGrid extends StatelessWidget {
+  final List<String> options;
+  final String selectedAnswer;
+  final void Function(String) onSelect;
+
+  const _OptionsGrid({super.key, required this.options, required this.selectedAnswer, required this.onSelect});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        for (int i = 0; i < options.length; i++) ...[
+          _PillButton(label: options[i], isSelected: selectedAnswer == options[i], onPressed: () => onSelect(options[i])),
+          if (i < options.length - 1) const SizedBox(height: 10),
+        ],
+      ],
+    );
+  }
+}
+
+// ── Pill Button ───────────────────────────────────────────────────────────────
+class _PillButton extends StatefulWidget {
+  final String label;
+  final bool isSelected;
+  final VoidCallback onPressed;
+  const _PillButton({required this.label, required this.isSelected, required this.onPressed});
+
+  @override
+  State<_PillButton> createState() => _PillButtonState();
+}
+
+class _PillButtonState extends State<_PillButton> with SingleTickerProviderStateMixin {
+  late AnimationController _ctrl;
+  late Animation<double> _scale;
 
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(vsync: this, duration: const Duration(seconds: 1))..repeat(reverse: true);
-    _animation = Tween<double>(begin: 1.0, end: 1.05).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
+    _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 80), reverseDuration: const Duration(milliseconds: 200));
+    _scale = Tween<double>(begin: 1.0, end: 0.96).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeOut));
   }
 
   @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
+  void dispose() { _ctrl.dispose(); super.dispose(); }
 
   @override
   Widget build(BuildContext context) {
-    String displayStatus = "Align Face";
-    Color borderColor = Colors.white38;
-    bool isLocked = false;
-
-    if (widget.status.contains("Stable")) {
-      displayStatus = "Face Locked ✅";
-      borderColor = const Color(0xFF00FFC2);
-      isLocked = true;
-    } else if (widget.status.contains("Blink") || widget.status.contains("Detected")) {
-      displayStatus = "Detecting...";
-      borderColor = Colors.orangeAccent;
-    }
-
-    return ScaleTransition(
-      scale: _animation,
-      child: Container(
-        width: 220, height: 280,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(150),
-          border: Border.all(color: borderColor, width: 4),
-          boxShadow: [
-            if (isLocked) BoxShadow(color: borderColor.withValues(alpha: 0.5), blurRadius: 25, spreadRadius: 5),
-            BoxShadow(color: Colors.black.withValues(alpha: 0.3), blurRadius: 10),
-          ],
-        ),
-        child: Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (isLocked) const Icon(Icons.check_circle_outline, color: Color(0xFF00FFC2), size: 48),
-              const SizedBox(height: 12),
-              Text(
-                displayStatus, 
-                textAlign: TextAlign.center,
-                style: TextStyle(color: borderColor, fontSize: 18, fontWeight: FontWeight.w900, letterSpacing: 1, shadows: [Shadow(color: Colors.black.withValues(alpha: 0.5), blurRadius: 8)]),
-              ),
-            ],
+    return GestureDetector(
+      onTapDown: (_) => _ctrl.forward(),
+      onTapUp: (_) { _ctrl.reverse(); widget.onPressed(); },
+      onTapCancel: () => _ctrl.reverse(),
+      child: ScaleTransition(
+        scale: _scale,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 250),
+          height: 64,
+          decoration: BoxDecoration(
+            color: widget.isSelected ? const Color(0xFF00C2FF) : const Color(0xFF0E2235),
+            borderRadius: BorderRadius.circular(18),
+            boxShadow: widget.isSelected
+                ? [BoxShadow(color: const Color(0xFF00C2FF).withValues(alpha: 0.35), blurRadius: 20, offset: const Offset(0, 6))]
+                : [BoxShadow(color: Colors.black.withValues(alpha: 0.25), blurRadius: 8, offset: const Offset(0, 3))],
+          ),
+          alignment: Alignment.center,
+          child: Text(
+            widget.label,
+            style: TextStyle(
+              color: widget.isSelected ? const Color(0xFF0B1F3A) : Colors.white.withValues(alpha: 0.85),
+              fontSize: 20, fontWeight: FontWeight.w700, letterSpacing: -0.2,
+            ),
           ),
         ),
       ),
@@ -1632,4 +1631,97 @@ class _FaceGuideState extends State<_FaceGuide> with SingleTickerProviderStateMi
   }
 }
 
+// ── Controls Row ──────────────────────────────────────────────────────────────
+class _ControlsRow extends StatelessWidget {
+  final bool useBlink, isDemoMode;
+  final void Function(bool) onBlinkToggle, onDemoToggle;
+
+  const _ControlsRow({required this.useBlink, required this.isDemoMode, required this.onBlinkToggle, required this.onDemoToggle});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        _MiniToggle(label: 'Blink', active: useBlink, onTap: () => onBlinkToggle(!useBlink)),
+        const SizedBox(width: 12),
+        _MiniToggle(label: 'Simulate', active: isDemoMode, onTap: () => onDemoToggle(!isDemoMode)),
+      ],
+    );
+  }
+}
+
+class _MiniToggle extends StatelessWidget {
+  final String label;
+  final bool active;
+  final VoidCallback onTap;
+  const _MiniToggle({required this.label, required this.active, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+        decoration: BoxDecoration(
+          color: active ? const Color(0xFF00C2FF).withValues(alpha: 0.1) : Colors.white.withValues(alpha: 0.04),
+          borderRadius: BorderRadius.circular(30),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              width: 6, height: 6,
+              decoration: BoxDecoration(color: active ? const Color(0xFF00C2FF) : Colors.white24, shape: BoxShape.circle),
+            ),
+            const SizedBox(width: 7),
+            Text(label, style: TextStyle(color: active ? const Color(0xFF00C2FF) : Colors.white30, fontSize: 12, fontWeight: FontWeight.w600)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Legacy stubs (keep demo-mode callers compiling) ───────────────────────────
+class _ResponseButton extends StatelessWidget {
+  final String label;
+  final Color color;
+  final VoidCallback onPressed;
+  final bool isSelected;
+  const _ResponseButton({required this.label, required this.color, required this.onPressed, this.isSelected = false});
+
+  @override
+  Widget build(BuildContext context) => _PillButton(label: label, isSelected: isSelected, onPressed: onPressed);
+}
+
+class _OptionToggle extends StatelessWidget {
+  final String label;
+  final bool value;
+  final Function(bool) onChanged;
+  const _OptionToggle({required this.label, required this.value, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) => _MiniToggle(label: label, active: value, onTap: () => onChanged(!value));
+}
+
+class _SystemStatusBar extends StatelessWidget {
+  final String label, emoji, blinkDetail;
+  final Color color;
+  final bool isDemo;
+  const _SystemStatusBar({required this.label, required this.emoji, required this.color, required this.blinkDetail, required this.isDemo});
+
+  @override
+  Widget build(BuildContext context) => const SizedBox.shrink();
+}
+
+class _FaceGuide extends StatelessWidget {
+  final String status;
+  const _FaceGuide({required this.status});
+
+  @override
+  Widget build(BuildContext context) => const SizedBox.shrink();
+}
 
